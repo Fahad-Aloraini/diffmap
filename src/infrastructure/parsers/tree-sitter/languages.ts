@@ -59,6 +59,8 @@ export interface CallShape {
   labels?: string[];
   /** Trailing closures after the arguments. */
   closures?: number;
+  /** Written between its receiver and its argument (`a eq b`): only a function declared `infix` can be meant. */
+  infix?: boolean;
   /** Not a call: "ref" names a function without calling it (`#selector(save)`, `action: save`), "read" reads a property. */
   use?: "ref" | "read";
   /** The node that holds the name, for the line it is written on. */
@@ -91,6 +93,8 @@ export interface LanguageSpec {
    * calls only. It must keep every character's place: same length, same line breaks.
    */
   prepare?: (source: string) => string;
+  /** Undoes, in a name read from the prepared text, what `prepare` did to it. */
+  restore?: (text: string) => string;
   extensions: string[];
   defs: Record<string, DefRule>;
   calls: Record<string, CallRule>;
@@ -331,6 +335,63 @@ const swiftPrepare = (source: string): string =>
       .replace(/(?<=^|[\s=(,{:\[])unsafe(?=[ \t]+[A-Za-z_.(\[&"])(?![ \t]+(?:in|as|is)\b)/gm, blank)
       .replace(/(\(\s*)self(?=\s*:\s*Self\b)/g, "$1this"),
   );
+
+/** Kotlin modifiers the bundled grammar cannot read as a name (`internal.run()`, `open = 1`, `{ override -> }`). */
+const KOTLIN_MODIFIER_NAMES =
+  "open|override|internal|final|abstract|public|private|protected|sealed|annotation|inline|operator|infix|external|lateinit|vararg|const|suspend|tailrec|crossinline|noinline|enum";
+const KOTLIN_MODIFIER_AS_NAME = new RegExp(`(?<![\\w.@\`$])(?:${KOTLIN_MODIFIER_NAMES})(?=[ \\t]*(?:\\?\\.|\\.|->|=(?!=)))`, "g");
+/** Stands in for the first letter of an infix function that starts with `e` (see kotlinPrepare): a Cyrillic "е", one character wide like the Latin one. */
+const KOTLIN_E = "\u0435";
+const balanced = (text: string): boolean => {
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === "(") depth++;
+    else if (ch === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
+};
+
+/**
+ * Kotlin the bundled grammar (2023) cannot read, rewritten for the parser only. Every
+ * change keeps each character's place, so lines and columns stay those of the file.
+ * - `fun interface Lease {`: `fun` is blanked; it is read as an interface, which it is.
+ * - `perform: Outer.Inner.() -> Unit`: the dots of the receiver type become `_`.
+ * - `{ (_, key): Record -> key }`: the type after the destructured names is blanked.
+ * - `view.get().visible = true`, `find<T>(id).text = x`: an assignment to a property of what a
+ *   call returns. `=` becomes `==`, so both sides are still read, calls included.
+ * - `map.getOrPut(k) { list() } += x`: the same, for `+=` after a trailing lambda.
+ * - a modifier used as a name (`internal.launch()`, `{ open -> open.id }`, `override = x`):
+ *   its last letter becomes `_`. A real modifier is never followed by `.`, `=` or `->`.
+ * - `.where { }` and `fun where(`: a name here, a keyword only in `where T : Any`. The same.
+ * - `1..<n` (Kotlin 1.9): read as `1.. n`.
+ * - `a eq b`: an infix function whose name starts with `e` is not read (the grammar's own
+ *   scanner takes the `e` for the start of `else`). The `e` is written as another letter.
+ * Names changed on the way are put back by kotlinRestore, so the map shows what the file says.
+ */
+const kotlinPrepare = (source: string): string =>
+  source
+    .replace(/\bfun(?=[ \t]+interface\b)/g, blank)
+    .replace(/\b[A-Z]\w*(?:\.[A-Z]\w*)+(?=\.\()/g, (m) => m.replace(/\./g, "_"))
+    .replace(/(\{\s*\([^(){}\n]*\))(\s*:\s*[\w.<>?, ]+?)(?=\s*->)/g, (_, names: string, type: string) => names + blank(type))
+    .replace(/^([ \t]*[^\n=]*\)\??\.[\w.?]+) = (?!=)/gm, (m, lhs: string) => (balanced(lhs) ? `${lhs}== ` : m))
+    .replace(/\} \+= /g, "} == ")
+    .replace(/\.\.<(?=[\w(])/g, ".. ")
+    .replace(/(?<=\.)where\b|\bwhere(?=[ \t]*[({])/g, "wher_")
+    .replace(/(?<=[\w)\]}"'] )e(?=\w* [\w("'{\[-])(?!(?:lse|num|xternal|xpect)\b)/g, KOTLIN_E)
+    .replace(KOTLIN_MODIFIER_AS_NAME, (m) => m.slice(0, -1) + "_");
+
+/** The names kotlinPrepare changed, as they are written in the file: `wher_` -> `where`, `interna_` -> `internal`. */
+const KOTLIN_CHANGED_NAME = new RegExp(`\\b(?:${`${KOTLIN_MODIFIER_NAMES}|where`.split("|").map((w) => w.slice(0, -1)).join("|")})_(?![\\w])`, "g");
+const KOTLIN_WRITTEN: Record<string, string> = Object.fromEntries(`${KOTLIN_MODIFIER_NAMES}|where`.split("|").map((w) => [w.slice(0, -1) + "_", w]));
+const kotlinRestore = (text: string): string =>
+  (text.includes("_") ? text.replace(KOTLIN_CHANGED_NAME, (m) => KOTLIN_WRITTEN[m] ?? m) : text).replaceAll(KOTLIN_E, "e");
+
+/** `a eq b`, `mock returns x`: a function called between what it is called on and its one argument. */
+const kotlinInfix: CallRule = (n) => {
+  const [on, name] = n.namedChildren;
+  if (!on || name?.type !== "simple_identifier" || n.namedChildren.length !== 3) return null;
+  return { name: name.text, receiver: on.text, at: name, infix: true };
+};
 
 /** `static func make()` / `class func make()`. */
 const swiftIsStatic = (n: Node): boolean =>
@@ -714,6 +775,8 @@ export const LANGUAGES: LanguageSpec[] = [
   {
     id: "kotlin",
     extensions: [".kt", ".kts"],
+    prepare: kotlinPrepare,
+    restore: kotlinRestore,
     defs: {
       class_declaration: {
         kind: "class",
@@ -736,7 +799,7 @@ export const LANGUAGES: LanguageSpec[] = [
         },
       },
     },
-    calls: { call_expression: firstChild },
+    calls: { call_expression: firstChild, infix_expression: kotlinInfix },
   },
   {
     id: "swift",

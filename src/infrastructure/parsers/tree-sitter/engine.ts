@@ -29,6 +29,8 @@ export interface FoundCall {
   labels?: string[];
   /** Swift: trailing closures after the arguments. */
   closures?: number;
+  /** Kotlin: written as `a name b`; only a function declared `infix` can be meant. */
+  infix?: boolean;
   /** Not a call: "ref" names a function without calling it (`#selector(save)`), "read" reads a property with code. */
   use?: "ref" | "read";
 }
@@ -143,7 +145,10 @@ export class TreeSitterEngine {
   }
 
   symbols(path: string, source: string): SymbolInfo[] {
-    return this.with(path, source, (root, spec) => listSymbols(root, spec).map((s) => s.info)) ?? [];
+    return this.with(path, source, (root, spec) => {
+      const symbols = listSymbols(root, spec).map((s) => s.info);
+      return spec.restore ? restored(symbols, spec.restore) : symbols;
+    }) ?? [];
   }
 
   /** Symbols, the calls made inside them, and each type's parent types, from one parse. */
@@ -167,7 +172,8 @@ export class TreeSitterEngine {
         const statics: string[] = [];
         const signatures: Record<string, Param[]> = {};
         const found = listSymbols(root, spec, parents, returns, params, properties, statics, signatures);
-        return { symbols: found.map((s) => s.info), calls: listCalls(root, spec, found), parents, returns, params, properties, statics, signatures };
+        const outline: Outline = { symbols: found.map((s) => s.info), calls: listCalls(root, spec, found), parents, returns, params, properties, statics, signatures };
+        return spec.restore ? restored(outline, spec.restore) : outline;
       }) ?? { symbols: [], calls: [], parents: [], returns: {}, params: {}, properties: [], statics: [], signatures: {} }
     );
   }
@@ -181,6 +187,16 @@ export class TreeSitterEngine {
     if (!this.spec(path)?.uses) return [];
     return this.with(path, source, (root, spec) => listCalls(root, spec, listSymbols(root, spec), names)) ?? [];
   }
+}
+
+/** The same data with every text in it (names, receivers, also as keys) put back as the file writes it. */
+function restored<T>(value: T, restore: (text: string) => string): T {
+  if (typeof value === "string") return restore(value) as T;
+  if (Array.isArray(value)) return value.map((v) => restored(v, restore)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [restore(k), restored(v, restore)])) as T;
+  }
+  return value;
 }
 
 interface Found {
@@ -391,6 +407,7 @@ function listCalls(root: Node, spec: LanguageSpec, symbols: Found[], names?: Use
           ...(shape.context ? { context: shape.context } : {}),
           ...(shape.labels ? { labels: shape.labels } : {}),
           ...(shape.closures ? { closures: shape.closures } : {}),
+          ...(shape.infix ? { infix: true } : {}),
           ...(shape.use ? { use: shape.use } : {}),
         });
       }
