@@ -157,7 +157,15 @@ export class TreeSitterCallGraph implements CallGraphPort {
       const from = `${c.file}#${c.from}`;
       const text = linesOf.get(c.file)?.[c.line - 1] ?? "";
       const spec = this.engine.spec(c.file);
-      const named = (byName.get(c.name) ?? []).filter((id) => id !== from);
+      let named = (byName.get(c.name) ?? []).filter((id) => id !== from);
+      // `a until b`: only functions declared `infix` are called this way (not Java's `until(..)`).
+      // The modifier sits before `fun`, after any annotations: on the symbol's first lines.
+      if (c.infix) {
+        named = named.filter((id) => {
+          const head = (linesOf.get(node(id).file) ?? []).slice(node(id).line - 1, node(id).line + 4).join("\n");
+          return /\binfix\b[^\n]*\bfun\b/.test(head.slice(0, head.search(/\bfun\b/) + 3 || undefined));
+        });
+      }
 
       // Not a call: a property read, or a function passed by name. Linked only when it is clear whose.
       if (c.use) {

@@ -8,6 +8,14 @@
 
 ## Done
 
+### 31. Kotlin the grammar could not read; infix calls — DONE
+- The main languages are now TypeScript, Java and Kotlin, and Swift; this is the first Kotlin round.
+- The bundled Kotlin grammar (2023) gives up on a file at: `fun interface`; an assignment to a property of what a call returns (`view.get().visible = true`); a modifier used as a name (`internal.launch()`, `{ open -> }`); `.where { }`; `1..<n`; `perform: Outer.Inner.() -> Unit`; `{ (_, key): Record -> }`; and any infix function whose name starts with `e` (`a eq b`). After such a line, methods fell out of their class. These are rewritten for the parser only, each character in place (`kotlinPrepare`), and the names are put back as written.
+- Kotlin files with a parse error: Signal-Android 124 -> 34 of 5,214; JetBrains/Exposed 231 -> 54 of 985.
+- Infix calls (`a eq b`, `x like y`) are calls now, linked only to functions declared `infix`. Exposed: 1,579 of them link to repo code.
+- Links from Kotlin files: Exposed 45,165 -> 49,224; Signal-Android about the same in number (188,896 -> 189,388), with methods back in their classes.
+- Still not read: `when` guards (`is A if x ->`), some `when` branches starting with `!`, and what a newer grammar would fix.
+
 ### 30. Rust and C++ calls written with their type; no guessing past a known type — DONE
 - `DeviceId::new(1)`, `Self::new(..)`, `keys::address::DeviceId::new(..)` and C++ `Svc::make(1)` were read as one long name, so none of them was ever linked. They are now `new` called on `DeviceId`. `module::run()` and `ns::run()` are plain functions; `std::`, `core::` and `alloc::` are the standard library and left out.
 - Rust: names the standard library gives nearly every type (`clone`, `into`, `iter`, `map`, `len`, ...) are not linked when the receiver's type is unknown.

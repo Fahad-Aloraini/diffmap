@@ -501,3 +501,73 @@ describe("names written with what they belong to (roadmap 30)", () => {
     expect(callersOf(rust, "src/a.rs#Token.serialize")).toEqual(["src/use.rs#b"]);
   });
 });
+
+describe("Kotlin the bundled grammar cannot read (roadmap 31)", () => {
+  // Each line below made the whole file read badly: methods after it fell out of their class.
+  const QUERY = [
+    "fun interface Lease {", //                                              1
+    "  fun release()", //                                                    2
+    "}", //                                                                  3
+    "class Query {", //                                                      4
+    "  fun where(predicate: () -> Op): Query = this", //                     5
+    "  infix fun eq(other: Query): Op = Op()", //                            6
+    "  fun <T> typed(): T where T : Any = TODO()", //                        7
+    "}", //                                                                  8
+    "class Internal {", //                                                   9
+    "  fun launch() {}", //                                                  10
+    "}", //                                                                  11
+    "",
+  ].join("\n");
+  const USE = [
+    "class Use(val internal: Internal, val open: Query) {", //               1
+    "  fun assign(view: Holder) {", //                                       2
+    "    view.get().visible = true", //                                      3
+    "    find<Holder>(1).visible = if (view.ready()) true else false", //    4
+    "  }", //                                                                5
+    "  fun keywordNames() {", //                                             6
+    "    internal.launch()", //                                              7
+    "    open.typed<Int>()", //                                              8
+    "  }", //                                                                9
+    "  fun infix(a: Query, b: Query) {", //                                  10
+    "    val op = a eq b", //                                                11
+    "    a.where { a eq b }", //                                             12
+    "  }", //                                                                13
+    "  fun newer(edit: Outer.Inner.() -> Unit, pairs: List<Pair<Int, Query>>) {", // 14
+    "    for (i in 0..<10) { pairs.map { (_, q): Pair<Int, Query> -> q.typed<Int>() } }", // 15
+    "  }", //                                                                16
+    "  fun last(view: Holder) { view.ready() }", //                          17
+    "}", //                                                                  18
+    "class Holder {", //                                                     19
+    "  fun get(): Holder = this", //                                         20
+    "  fun ready(): Boolean = true", //                                      21
+    "}", //                                                                  22
+    "",
+  ].join("\n");
+  const files = { "q/Query.kt": QUERY, "q/Use.kt": USE };
+
+  it("keeps every method in its class, under the name the file writes", async () => {
+    const engine = await TreeSitterEngine.load();
+    expect(engine.symbols("q/Query.kt", QUERY).map((s) => `${s.name} ${s.range.start}`)).toEqual([
+      "Lease 1", "Lease.release 2", "Query 4", "Query.where 5", "Query.eq 6", "Query.typed 7", "Internal 9", "Internal.launch 10",
+    ]);
+    expect(engine.symbols("q/Use.kt", USE).map((s) => s.name)).toEqual([
+      "Use", "Use.assign", "Use.keywordNames", "Use.infix", "Use.newer", "Use.last", "Holder", "Holder.get", "Holder.ready",
+    ]);
+  });
+
+  it("still reads the calls on those lines", () => {
+    expect(callersOf(files, "q/Use.kt#Holder.get")).toEqual(["q/Use.kt#Use.assign"]);
+    // The right-hand side of the assignment on line 4, and the last method of the class.
+    expect(callersOf(files, "q/Use.kt#Holder.ready")).toEqual(["q/Use.kt#Use.assign", "q/Use.kt#Use.last"]);
+    expect(callersOf(files, "q/Query.kt#Internal.launch")).toEqual(["q/Use.kt#Use.keywordNames"]);
+    expect(callersOf(files, "q/Query.kt#Query.where")).toEqual(["q/Use.kt#Use.infix"]);
+    expect(callersOf(files, "q/Query.kt#Query.eq")).toEqual(["q/Use.kt#Use.infix"]);
+    expect(callersOf(files, "q/Query.kt#Query.typed")).toEqual(["q/Use.kt#Use.keywordNames", "q/Use.kt#Use.newer"]);
+  });
+
+  it("leaves real keywords alone", async () => {
+    const engine = await TreeSitterEngine.load();
+    const src = "private enum class Kind { A, B }\ninternal open class Base {\n  open fun run(x: Int) = if (x > 0) x else 0\n  private external fun native(): Int\n}\n";
+    expect(engine.symbols("k.kt", src).map((s) => `${s.kind} ${s.name}`)).toEqual(["enum Kind", "class Base", "method Base.run", "method Base.native"]);
+  });
+});
