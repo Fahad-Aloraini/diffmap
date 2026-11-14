@@ -115,13 +115,27 @@ export interface LanguageSpec {
    * built on one reaches what the repo adds to its parents (`extension UIView { ... }`).
    */
   knownParents?: Record<string, string>;
+  /**
+   * A method called on a type the repo defines is written in that type (or a parent): when it
+   * is not, something outside the code provides it (Rust's derives and library traits, Lombok),
+   * and a method of that name on another type is not linked. Not for languages where methods are
+   * often added from outside the type (Kotlin and Swift extensions) or reached through an
+   * interface nobody declares they implement (Go).
+   */
+  methodsAreWritten?: boolean;
+  /** Method names the standard library gives nearly every type: never linked on a receiver of unknown type. */
+  everyTypeHas?: ReadonlySet<string>;
 }
 
 const IDENT = /(^|_)identifier$|^name$|^constant$|^word$/;
+/** A name written with what it belongs to: Rust `a::B::c`, C++ `ns::Svc::make`. */
+const SCOPED = /^(scoped_identifier|scoped_type_identifier|qualified_identifier)$/;
 
 /** The text of a node's identifier-like part: `a.b.c` -> "c", `Foo<T>` -> "Foo". */
 export function lastName(n: Node | null): string | null {
   if (!n) return null;
+  // A::b::c is one node that reads like an identifier: the name is its last part.
+  if (SCOPED.test(n.type)) return lastName(n.childForFieldName("name") ?? n.namedChildren[n.namedChildren.length - 1] ?? null);
   if (IDENT.test(n.type)) return n.text;
   const kids = n.namedChildren.filter((c) => !/argument|parameter|type_arguments|generic/.test(c.type));
   for (let i = kids.length - 1; i >= 0; i--) {
@@ -137,6 +151,27 @@ export function firstIdent(n: Node): string | null {
 }
 
 const field = (f: string): CallRule => (n) => lastName(n.childForFieldName(f));
+
+/**
+ * Rust and C++: `Type::make(1)` is `make` called on Type; `module::run()`, `crate::run()` and
+ * `ns::run()` are plain functions reached through a module or namespace. The two are told
+ * apart the way the code is written: types start with a capital, modules and namespaces do not.
+ * `pathField` is the field holding what comes before the name ("path" in Rust, "scope" in C++).
+ */
+const scopedCall = (pathField: string): CallRule => (n) => {
+  let f = n.childForFieldName("function");
+  // make::<T>(x) / make<T>(x): the function inside the generic arguments
+  if (f && /^(generic_function|template_function)$/.test(f.type)) f = f.childForFieldName("function") ?? f.childForFieldName("name") ?? f;
+  if (!f || !SCOPED.test(f.type)) return lastName(f);
+  const name = lastName(f);
+  if (!name) return null;
+  const path = f.childForFieldName(pathField);
+  // std::move(x), std::mem::take(x), core::..., alloc::...: the standard library, never repo code.
+  if (/^(std|core|alloc)\b/.test(path?.text.replace(/^::/, "") ?? "")) return null;
+  const on = lastName(path);
+  if (!on || !/^[A-Z]/.test(on)) return { name, receiver: "" };
+  return { name, receiver: on === "Self" ? "self" : on };
+};
 const firstChild: CallRule = (n) => lastName(n.namedChildren[0] ?? null);
 const fieldName = (f: string) => (n: Node) => lastName(n.childForFieldName(f));
 
@@ -148,6 +183,17 @@ function declaratorName(n: Node): string | null {
 }
 
 const hasBody = (n: Node) => n.childForFieldName("body") !== null;
+
+/** Methods of Rust's standard traits and of Option, Result, iterators and collections. */
+const RUST_COMMON_METHODS: ReadonlySet<string> = new Set(
+  (
+    "clone clone_from into try_into from try_from default as_ref as_mut borrow borrow_mut deref deref_mut drop fmt to_string to_owned " +
+    "eq ne cmp partial_cmp hash next into_iter iter iter_mut collect map map_err and_then or_else ok ok_or ok_or_else err unwrap " +
+    "unwrap_or unwrap_or_else unwrap_or_default expect is_some is_none is_ok is_err take replace as_deref as_deref_mut as_slice " +
+    "as_str as_bytes as_ptr len is_empty push pop insert remove get get_mut contains extend filter fold for_each any all find " +
+    "enumerate zip rev skip chain count sum cloned copied lock read write send recv poll await_ready to_vec into_inner with_capacity"
+  ).split(" "),
+);
 
 /** Generic arguments and constructor arguments are not parent types: `Base<T>(x)` -> Base. */
 const NOT_A_PARENT = /type_arguments|type_parameters|type_argument_list|template_argument_list|value_arguments|^arguments$/;
@@ -549,6 +595,7 @@ export const LANGUAGES: LanguageSpec[] = [
       method_declaration: { kind: "method", returns: returnsIn("type") },
       constructor_declaration: { kind: "method" },
     },
+    methodsAreWritten: true,
     calls: {
       method_invocation: field("name"),
       object_creation_expression: field("type"),
@@ -660,7 +707,9 @@ export const LANGUAGES: LanguageSpec[] = [
         },
       },
     },
-    calls: { call_expression: field("function") },
+    calls: { call_expression: scopedCall("path") },
+    methodsAreWritten: true,
+    everyTypeHas: RUST_COMMON_METHODS,
   },
   {
     id: "kotlin",
@@ -766,6 +815,6 @@ export const LANGUAGES: LanguageSpec[] = [
       struct_specifier: { kind: "struct", when: hasBody, supers: parentsIn("base_class_clause") },
       namespace_definition: { kind: "module", containerOnly: true },
     },
-    calls: { call_expression: field("function"), new_expression: field("type") },
+    calls: { call_expression: scopedCall("scope"), new_expression: field("type") },
   },
 ];

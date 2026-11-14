@@ -42,6 +42,8 @@ or on a field, property or constructor parameter of its class) → that class;
 the same through calls and fields, using declared return types
 (`var o = repo.find(id); o.total()`, `repo.find(id).total()`);
 calls on a library type (`items.add()`) are left out;
+`Type::make()` in Rust and C++ → that type, `module::run()` → a plain function, `std::` never;
+in Rust and Java, a method a known type does not write itself (a derive, Lombok) is not taken from another type;
 when several same-named methods are left, those that accept the number of
 arguments passed;
 of same-named classes, the one the file imports;

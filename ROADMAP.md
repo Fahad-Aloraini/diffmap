@@ -8,6 +8,14 @@
 
 ## Done
 
+### 30. Rust and C++ calls written with their type; no guessing past a known type — DONE
+- `DeviceId::new(1)`, `Self::new(..)`, `keys::address::DeviceId::new(..)` and C++ `Svc::make(1)` were read as one long name, so none of them was ever linked. They are now `new` called on `DeviceId`. `module::run()` and `ns::run()` are plain functions; `std::`, `core::` and `alloc::` are the standard library and left out.
+- Rust: names the standard library gives nearly every type (`clone`, `into`, `iter`, `map`, `len`, ...) are not linked when the receiver's type is unknown.
+- Rust, Java: when the receiver's type is known and that type (or a parent) does not write the method, something outside the code provides it (a derive, a library trait, Lombok's `@Getter`): another type's method of that name is no longer linked. Not for Kotlin, Swift or Go, where extensions and undeclared interfaces make that guess right too often to drop.
+- Checked against the compiler on signalapp/libsignal (594 Rust files, `scripts/measure-accuracy.ts`): right links 6,336 -> 9,702, wrong 5,304 -> 3,474, missed 6,817 -> 3,423. Precision 54.4% -> 73.6%, recall 48.2% -> 73.9%.
+- Java, macrozheng/mall: 96 calls lost their link; 14 of 14 looked at were calls on a Lombok class that had been tied to another class's getter or setter. C++, nlohmann/json: 2,404 more links, 5 fewer (not checked against a compiler). Go, Kotlin and Swift link as before (gin, Exposed, Alamofire).
+- Still missing in Rust: calls inside macros (`assert_eq!(a.b(), ..)`), which the grammar does not parse.
+
 ### 29. Dashboard — DONE
 - `/dashboard`, for the usernames in `ADMIN_USERS` (empty by default, so nobody): reviews being got ready now and how many wait for a slot; the last 50 analyses with their times, outcome and whether an index was used; totals since the start; memory; people signed in; each project's size on disk against the limit; the latest log lines. Refreshes every five seconds.
 - Kept in memory only: the numbers start again with the service.
