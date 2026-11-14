@@ -442,7 +442,13 @@ export class TreeSitterCallGraph implements CallGraphPort {
       if (sub.length) return { ids: sub };
       // ...or one it inherits from a library type (`interface OrderRepo extends JpaRepository`).
       if (scope.ancestorsOf(typeName).some((t) => !scope.isRepoType(t))) return null;
+      // The type is known and has no such method in the code: something else gives it one (a
+      // derive, Lombok's @Getter, a library trait). Another type's method of that name is not it.
+      if (spec?.methodsAreWritten) return null;
     }
+    // Nobody wrote the type down. A name nearly every type has (Rust's `clone`, `into`, `iter`)
+    // says nothing about whose it is.
+    if (receiver !== "" && receiver !== "self" && spec?.everyTypeHas?.has(c.name)) return null;
 
     // Same file first, then files the caller imports or shares a folder with.
     const local = all.filter((id) => node(id).file === c.file);

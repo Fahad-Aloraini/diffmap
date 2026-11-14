@@ -424,3 +424,80 @@ describe("same-named classes (roadmap 22.6)", () => {
     expect(callersOf(files, "old/models.py#Order.total")).toEqual([]);
   });
 });
+
+describe("names written with what they belong to (roadmap 30)", () => {
+  const RUST = {
+    "keys/src/address.rs": [
+      "pub struct DeviceId(u8);",
+      "impl DeviceId {",
+      "    pub fn new(id: u8) -> Self { DeviceId(id) }",
+      "    pub fn again(&self) -> Self { Self::new(self.0) }",
+      "    pub fn take(&self) -> u8 { self.0 }",
+      "}",
+      "pub struct Addr { name: String }",
+      "impl Addr {",
+      "    pub fn new(name: String) -> Self { Addr { name } }",
+      "    pub fn clone(&self) -> Self { Addr::new(self.name.to_string()) }",
+      "}",
+      "pub fn parse(s: &str) -> u8 { 1 }",
+      "",
+    ].join("\n"),
+    "proto/src/use.rs": [
+      "use keys::address::{DeviceId, Addr};",
+      "use keys::address;",
+      "fn typed() { let d = DeviceId::new(1); }",
+      "fn full_path() { let d = keys::address::DeviceId::new(2); }",
+      "fn generic() { let d = DeviceId::new::<u8>(3); }",
+      "fn through_module() { let p = address::parse(\"1\"); }",
+      "fn library() { let v: Vec<u8> = Vec::new(); let s = String::new(); let b = Box::new(1); }",
+      "fn standard(x: Option<u8>) { let y = std::mem::take(&mut x); }",
+      "fn unknown(thing: &Thing) { let c = thing.clone(); }",
+      "",
+    ].join("\n"),
+  };
+
+  it("Rust: Type::new(...) is new called on Type, by any path", () => {
+    expect(callersOf(RUST, "keys/src/address.rs#DeviceId.new")).toEqual([
+      "keys/src/address.rs#DeviceId.again", // Self::new
+      "proto/src/use.rs#full_path",
+      "proto/src/use.rs#generic",
+      "proto/src/use.rs#typed",
+    ]);
+    // Another type's new, and the library's Vec::new, String::new and Box::new, are not it.
+    expect(callersOf(RUST, "keys/src/address.rs#Addr.new")).toEqual(["keys/src/address.rs#Addr.clone"]);
+  });
+
+  it("Rust: module::function(...) is a plain function; std:: is never repo code", () => {
+    expect(callersOf(RUST, "keys/src/address.rs#parse")).toEqual(["proto/src/use.rs#through_module"]);
+    expect(callersOf(RUST, "keys/src/address.rs#DeviceId.take")).toEqual([]);
+  });
+
+  it("Rust: a name every type has is not linked on something of unknown type", () => {
+    expect(callersOf(RUST, "keys/src/address.rs#Addr.clone")).toEqual([]);
+  });
+
+  it("C++: Svc::make(...) is make called on Svc; ns::run() a plain function; std:: is left out", () => {
+    const files = {
+      "svc.cpp": "class Svc {\npublic:\n  static int make(int x) { return x; }\n};\nclass Other {\npublic:\n  static int make(int x) { return x; }\n};\nnamespace util {\nint run() { return 1; }\nint move(int x) { return x; }\n}\n",
+      "use.cpp": '#include "svc.cpp"\nint a() { return Svc::make(1); }\nint b() { return util::run(); }\nint c(int x) { return std::move(x); }\n',
+    };
+    expect(callersOf(files, "svc.cpp#Svc.make")).toEqual(["use.cpp#a"]);
+    expect(callersOf(files, "svc.cpp#Other.make")).toEqual([]);
+    expect(callersOf(files, "svc.cpp#util.run")).toEqual(["use.cpp#b"]);
+    expect(callersOf(files, "svc.cpp#util.move")).toEqual([]);
+  });
+
+  it("Rust, Java: a method a known type does not write is not another type's (derives, Lombok)", () => {
+    const java = {
+      "app/Param.java": "import lombok.Getter;\n@Getter\npublic class Param {\n  private String note;\n}\n",
+      "app/Apply.java": "public class Apply {\n  private String note;\n  public String getNote() { return note; }\n}\n",
+      "app/Use.java": "public class Use {\n  void a(Param param) { param.getNote(); }\n  void b(Apply apply) { apply.getNote(); }\n}\n",
+    };
+    expect(callersOf(java, "app/Apply.java#Apply.getNote")).toEqual(["app/Use.java#Use.b"]);
+    const rust = {
+      "src/a.rs": "#[derive(Debug)]\npub struct Key(u8);\npub struct Token(u8);\nimpl Token {\n    pub fn serialize(&self) -> u8 { self.0 }\n}\n",
+      "src/use.rs": "use crate::a::{Key, Token};\nfn a(key: &Key) { key.serialize(); }\nfn b(token: &Token) { token.serialize(); }\n",
+    };
+    expect(callersOf(rust, "src/a.rs#Token.serialize")).toEqual(["src/use.rs#b"]);
+  });
+});
