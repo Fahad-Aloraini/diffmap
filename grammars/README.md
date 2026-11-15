@@ -2,7 +2,7 @@
 
 Most tree-sitter grammars come from the `tree-sitter-wasms` package. A grammar in
 this folder is used instead when a language's entry in
-[languages.ts](../src/infrastructure/parsers/tree-sitter/languages.ts) names it (`wasm:`).
+its file in [languages/](../src/infrastructure/parsers/tree-sitter/languages/) names it (`wasm:`).
 
 | File | Grammar | Version | SHA-256 |
 |---|---|---|---|

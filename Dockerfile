@@ -6,7 +6,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
-# Keep only the tree-sitter grammars diffmap uses (see src/infrastructure/parsers/tree-sitter/languages.ts).
+# Keep only the tree-sitter grammars diffmap uses (see src/infrastructure/parsers/tree-sitter/languages/).
 # Swift's is not among them: it comes from grammars/ (see grammars/README.md).
 RUN cd node_modules/tree-sitter-wasms/out && for f in *.wasm; do \
       case "$f" in tree-sitter-javascript.wasm|tree-sitter-python.wasm|tree-sitter-java.wasm|tree-sitter-go.wasm|\

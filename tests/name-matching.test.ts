@@ -571,3 +571,46 @@ describe("Kotlin the bundled grammar cannot read (roadmap 31)", () => {
     expect(engine.symbols("k.kt", src).map((s) => `${s.kind} ${s.name}`)).toEqual(["enum Kind", "class Base", "method Base.run", "method Base.native"]);
   });
 });
+
+describe("each language keeps to its own rules (roadmap 32)", () => {
+  it("a call is only linked to code of its own language family", () => {
+    const files = {
+      "ios/Key.swift": "class Key {\n  func serialize() -> Int { 1 }\n}\n",
+      "rust/key.rs": "pub struct Key(u8);\nimpl Key {\n    pub fn serialize(&self) -> u8 { self.0 }\n}\n",
+      "web/key.js": "function serialize(k) {\n  return k;\n}\n",
+      "java/Key.java": "public class Key {\n  public int serialize() { return 1; }\n}\n",
+      // Three languages have a Key with serialize(): the name of the type is not enough to tell them apart.
+      "java/Use.java": "public class Use {\n  void run(Key key) { key.serialize(); }\n}\n",
+      "kotlin/Use.kt": "class UseKt {\n  fun run(key: Key) { key.serialize() }\n}\n",
+      "web/use.js": "function run(k) {\n  return serialize(k);\n}\n",
+    };
+    // Java and Kotlin call each other; neither reaches Swift, Rust or JavaScript.
+    expect(callersOf(files, "java/Key.java#Key.serialize")).toEqual(["java/Use.java#Use.run", "kotlin/Use.kt#UseKt.run"]);
+    expect(callersOf(files, "ios/Key.swift#Key.serialize")).toEqual([]);
+    expect(callersOf(files, "rust/key.rs#Key.serialize")).toEqual([]);
+    expect(callersOf(files, "web/key.js#serialize")).toEqual(["web/use.js#run"]);
+  });
+
+  it("a variable's type is read only in the forms its language writes", () => {
+    // `x: T` is Kotlin, Swift, Python, Rust and Scala; in Java it is the middle of `a ? x : T`.
+    expect(typeOfVariable("svc", "return ok ? svc : Other;", ["typeFirst", "constructed"])).toBeNull();
+    expect(typeOfVariable("svc", "val svc: Svc = make()", ["cast", "colonType", "constructed"])).toBe("Svc");
+    // `T x` is Java, C#, C, C++ and PHP; in Kotlin `Svc svc` declares nothing.
+    expect(typeOfVariable("svc", "Svc svc = make();", ["typeFirst", "constructed"])).toBe("Svc");
+    expect(typeOfVariable("svc", "Svc svc = make();", ["cast", "colonType", "constructed"])).toBeNull();
+    // Go's `svc *Svc` and Ruby's `Svc.new` are theirs alone.
+    expect(typeOfVariable("svc", "func run(svc *Svc) {", ["constructed", "goParam"])).toBe("Svc");
+    expect(typeOfVariable("svc", "@svc = Svc.new", ["rubyNew"])).toBe("Svc");
+    expect(typeOfVariable("svc", "@svc = Svc.new", ["typeFirst", "constructed"])).toBeNull();
+  });
+
+  it("every language says which family it is in and how it writes types", async () => {
+    const { LANGUAGES } = await import("../src/infrastructure/parsers/tree-sitter/languages.js");
+    expect(LANGUAGES.map((l) => l.id)).toEqual(["javascript", "python", "java", "go", "c_sharp", "php", "ruby", "rust", "kotlin", "swift", "scala", "c", "cpp"]);
+    for (const l of LANGUAGES) expect(l.variableTypes?.length, l.id).toBeGreaterThan(0);
+    const family = (id: string) => LANGUAGES.find((l) => l.id === id)!.family;
+    expect([family("java"), family("kotlin"), family("scala")]).toEqual(["jvm", "jvm", "jvm"]);
+    expect([family("c"), family("cpp")]).toEqual(["c", "c"]);
+    expect(family("swift")).toBeUndefined();
+  });
+});

@@ -99,7 +99,9 @@ export class TreeSitterEngine {
     const stamp = createHash("sha1");
     // The code that reads a tree (this folder) and the library that builds it.
     const here = dirname(fileURLToPath(import.meta.url));
-    for (const name of readdirSync(here).sort()) if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) stamp.update(readFileSync(join(here, name)));
+    for (const dir of [here, join(here, "languages")]) {
+      for (const name of readdirSync(dir).sort()) if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) stamp.update(readFileSync(join(dir, name)));
+    }
     stamp.update(String(statSync(require.resolve("web-tree-sitter")).size));
     for (const spec of specs) {
       // A grammar diffmap ships itself (grammars/), else the one from tree-sitter-wasms.

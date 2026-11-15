@@ -153,11 +153,23 @@ export class TreeSitterCallGraph implements CallGraphPort {
     const stats: LinkStats = { calls: 0, external: 0, one: 0, several: 0, tooMany: 0, unreachable: 0, libraryType: 0, implementsLinks: 0, uses: 0 };
     const collector = new CallCollector();
     const node = (id: string) => meta.get(id)!;
+    const families = new Map<string, string>();
+    const familyOf = (file: string): string => {
+      const ext = posix.extname(file).toLowerCase();
+      let family = families.get(ext);
+      if (family === undefined) {
+        const s = this.engine.spec(file);
+        families.set(ext, (family = s?.family ?? s?.id ?? ext));
+      }
+      return family;
+    };
     const linkOne = (c: FoundCall & { file: string }): void => {
       const from = `${c.file}#${c.from}`;
       const text = linesOf.get(c.file)?.[c.line - 1] ?? "";
       const spec = this.engine.spec(c.file);
-      let named = (byName.get(c.name) ?? []).filter((id) => id !== from);
+      // Only code of the caller's own language family: a Java call never reaches a Swift method of that name.
+      const family = familyOf(c.file);
+      let named = (byName.get(c.name) ?? []).filter((id) => id !== from && familyOf(node(id).file) === family);
       // `a until b`: only functions declared `infix` are called this way (not Java's `until(..)`).
       // The modifier sits before `fun`, after any annotations: on the symbol's first lines.
       if (c.infix) {
@@ -730,7 +742,7 @@ class TypeScope {
     }
     const g = this.globals.get(name);
     if (!g) return null;
-    const declared = typeOfVariable(name, g.text);
+    const declared = typeOfVariable(name, g.text, this.specOf(g.file)?.variableTypes);
     if (declared) return declared;
     const rhs = assignedExpr(name, g.text);
     const at: GraphNode = { id: `${g.file}#`, file: g.file, name: "", kind: "function", changed: false, line: g.line, endLine: g.line, labels: [] };
@@ -742,7 +754,7 @@ class TypeScope {
     if (this.cache.has(key)) return this.cache.get(key)!;
     this.cache.set(key, null);
     const code = this.code(caller);
-    let found = typeOfVariable(variable, code, this.specOf(caller.file)?.typeCalls);
+    let found = typeOfVariable(variable, code, this.specOf(caller.file)?.variableTypes);
     // var o = repo.find(id) / o, err := svc.Load() / let o = try await api.load()
     if (!found) {
       const rhs = assignedExpr(variable, code);
@@ -773,7 +785,7 @@ class TypeScope {
   private fieldType(variable: string, type: GraphNode): string | null {
     const key = `${type.id}>>${variable}`;
     if (this.cache.has(key)) return this.cache.get(key)!;
-    const found = typeOfVariable(variable, this.fieldsText(type), this.specOf(type.file)?.typeCalls);
+    const found = typeOfVariable(variable, this.fieldsText(type), this.specOf(type.file)?.variableTypes);
     this.cache.set(key, found);
     return found;
   }

@@ -8,6 +8,13 @@
 
 ## Done
 
+### 32. Each language keeps to its own rules — DONE
+- One file per language in `parsers/tree-sitter/languages/` (`kotlin.ts`, `swift.ts`, `java.ts`, ...), with everything that is that language's own: definitions, calls, what its grammar cannot read, how names are matched. Helpers several languages share are in `shared.ts`, which says so at the top.
+- A variable's type is looked for only in the forms its language writes (`variableTypes`): `Svc svc` in Java, C#, C, C++ and PHP; `svc: Svc` in Kotlin, Swift, Python, Rust and Scala; Go's and Ruby's forms in Go and Ruby only. Before, every language's code was tried against every form.
+- A call is linked only to code of its own family (`family`): Java, Kotlin and Scala together, C and C++ together, every other language alone. Before, a Java call could be tied to a Swift method of the same name, a Kotlin one to a function in a JavaScript bundle.
+- `scripts/compare-links.ts <repo> --save before.json`, then `--against before.json` after a change: per language, the symbols and links that went and came. Moving the rules into files changed nothing on seven repos; the two rules above changed what they were meant to (libsignal: 266 Java, 155 Kotlin, 132 Swift and 697 Rust links to another language's code gone).
+- libsignal against the compiler, Rust: precision 73.6% -> 73.1%, recall 73.9% -> 74.4%.
+
 ### 31. Kotlin the grammar could not read; infix calls — DONE
 - The main languages are now TypeScript, Java and Kotlin, and Swift; this is the first Kotlin round.
 - The bundled Kotlin grammar (2023) gives up on a file at: `fun interface`; an assignment to a property of what a call returns (`view.get().visible = true`); a modifier used as a name (`internal.launch()`, `{ open -> }`); `.where { }`; `1..<n`; `perform: Outer.Inner.() -> Unit`; `{ (_, key): Record -> }`; and any infix function whose name starts with `e` (`a eq b`). After such a line, methods fell out of their class. These are rewritten for the parser only, each character in place (`kotlinPrepare`), and the names are put back as written.

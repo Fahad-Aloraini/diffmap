@@ -1,0 +1,25 @@
+/** Java. Rules for this language only: changing them changes no other language. */
+import type { LanguageSpec } from "./spec.js";
+import { field, lastName, parentsIn, returnsIn } from "./shared.js";
+
+export const java: LanguageSpec = {
+  id: "java",
+  extensions: [".java"],
+  family: "jvm",
+  variableTypes: ["typeFirst", "constructed"],
+  defs: {
+    class_declaration: { kind: "class", supers: parentsIn("superclass", "super_interfaces") },
+    record_declaration: { kind: "class", supers: parentsIn("super_interfaces") },
+    interface_declaration: { kind: "interface", supers: parentsIn("extends_interfaces") },
+    enum_declaration: { kind: "enum", supers: parentsIn("super_interfaces") },
+    method_declaration: { kind: "method", returns: returnsIn("type") },
+    constructor_declaration: { kind: "method" },
+  },
+  methodsAreWritten: true,
+  calls: {
+    method_invocation: field("name"),
+    object_creation_expression: field("type"),
+    // this::check, Order::total -> the method; Foo::new -> the class
+    method_reference: (n) => lastName(n.namedChildren[n.namedChildren.length - 1] ?? null),
+  },
+};
