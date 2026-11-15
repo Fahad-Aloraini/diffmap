@@ -45,6 +45,8 @@ export interface Outline {
   symbols: SymbolInfo[];
   calls: FoundCall[];
   parents: TypeParents[];
+  /** Where each symbol starts and ends in the text (character offsets), in the order of `symbols`. */
+  spans: [number, number][];
   /** Declared return types by qualified symbol name (`Repo.find` -> "Order"). */
   returns: Record<string, string>;
   /** How many arguments each function accepts, [min, max] (max Infinity for varargs); overloads merge. */
@@ -174,9 +176,14 @@ export class TreeSitterEngine {
         const statics: string[] = [];
         const signatures: Record<string, Param[]> = {};
         const found = listSymbols(root, spec, parents, returns, params, properties, statics, signatures);
-        const outline: Outline = { symbols: found.map((s) => s.info), calls: listCalls(root, spec, found), parents, returns, params, properties, statics, signatures };
+        const outline: Outline = {
+          symbols: found.map((s) => s.info),
+          spans: found.map((s) => [s.start, s.end]),
+          calls: listCalls(root, spec, found),
+          parents, returns, params, properties, statics, signatures,
+        };
         return spec.restore ? restored(outline, spec.restore) : outline;
-      }) ?? { symbols: [], calls: [], parents: [], returns: {}, params: {}, properties: [], statics: [], signatures: {} }
+      }) ?? { symbols: [], spans: [], calls: [], parents: [], returns: {}, params: {}, properties: [], statics: [], signatures: {} }
     );
   }
 
@@ -185,9 +192,17 @@ export class TreeSitterEngine {
    * functions passed without being called (Swift). It needs the names from every
    * file first, so it is a second look at the file; other languages answer [] at once.
    */
-  uses(path: string, source: string, names: UseNames): FoundCall[] {
+  uses(path: string, source: string, names: UseNames, outline?: Outline): FoundCall[] {
     if (!this.spec(path)?.uses) return [];
-    return this.with(path, source, (root, spec) => listCalls(root, spec, listSymbols(root, spec), names)) ?? [];
+    return (
+      this.with(path, source, (root, spec) => {
+        // The symbols are known from the first look when the caller kept its outline.
+        const found: Found[] = outline
+          ? outline.symbols.map((info, i) => ({ info, start: outline.spans[i][0], end: outline.spans[i][1] }))
+          : listSymbols(root, spec);
+        return listCalls(root, spec, found, names);
+      }) ?? []
+    );
   }
 }
 

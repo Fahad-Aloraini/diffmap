@@ -8,6 +8,11 @@
 
 ## Done
 
+### 34. Swift: quicker, and the library's own methods left alone — DONE
+- Linking repeats less: the symbols of a name (in one language family) and those that accept a call's labels are worked out once, not once per call (`init` has 2,428 in kickstarter/ios-oss); the second look at a Swift file reuses the symbols found in the first. Whole-repo linking of ios-oss (2,084 Swift files): 28.7 s -> 19.8 s, link for link the same on five repos.
+- A library type the repo only adds to (`extension Signal { ... }`) counted as a type of the repo, so `signal.observe(..)` and `signal.filter { }` were tied to the repo's only method of that name on another type (5 of 30 sampled links in ios-oss). When the method is not one the repo adds, it is the library's own. ios-oss: 90 links gone, Alamofire: 26, none new; the ones looked at were all of this kind.
+- Still slow in Swift: every file is parsed twice (the second look needs the names from all files first).
+
 ### 33. Java: the type of a for-each variable; Java and Swift checked by hand — DONE
 - `for (OrderItem item : items)` now gives `item` its type (a form of Java's own, `loopVariable`). macrozheng/mall: calls with one target 10,656 -> 10,711, with several 542 -> 501, with too many 71 -> 55.
 - Neither language has a compiler index here, so random samples were read against the source (before this fix):

@@ -1,7 +1,7 @@
 import type { CallGraphInput, CallGraphPort, CallGraphResult } from "../../../application/ports/call-graph.port.js";
 import { CallCollector, walkNeighbourhood } from "../../../application/call-graph-walk.js";
 import type { GraphNode } from "../../../domain/graph.js";
-import type { FoundCall, TreeSitterEngine, TypeParents } from "./engine.js";
+import type { FoundCall, Outline, TreeSitterEngine, TypeParents } from "./engine.js";
 import type { LanguageSpec, Param } from "./languages.js";
 import { posix } from "node:path";
 import { Visibility, typeOfVariable } from "./visibility.js";
@@ -117,8 +117,12 @@ export class TreeSitterCallGraph implements CallGraphPort {
     const properties = new Set<string>(); // ids of properties with code
     const statics = new Set<string>(); // ids of static functions
     const signatures = new Map<string, Param[]>(); // symbol id -> its parameters one by one (Swift)
+    const outlines = new Map<string, Outline>();
     for (const f of files) {
-      const { symbols, calls: found, parents, returns: rets, params: ps, properties: props, statics: sts, signatures: sigs } = this.engine.outline(f.path, f.source);
+      const outline = this.engine.outline(f.path, f.source);
+      // Kept for the second look below, so that it need not find the symbols again.
+      if (this.engine.spec(f.path)?.uses) outlines.set(f.path, outline);
+      const { symbols, calls: found, parents, returns: rets, params: ps, properties: props, statics: sts, signatures: sigs } = outline;
       for (const name of sts) statics.add(`${f.path}#${name}`);
       for (const [name, sig] of Object.entries(sigs)) signatures.set(`${f.path}#${name}`, sig);
       for (const [name, range] of Object.entries(ps)) params.set(`${f.path}#${name}`, range);
@@ -163,13 +167,32 @@ export class TreeSitterCallGraph implements CallGraphPort {
       }
       return family;
     };
+    // The symbols of one name in one family, worked out once: a name like `init` has thousands,
+    // and is called thousands of times. These lists are shared, so they are never changed in place.
+    const inFamilyByName = new Map<string, readonly string[]>();
+    const candidates = (family: string, name: string): readonly string[] => {
+      const key = `${family}\n${name}`;
+      let list = inFamilyByName.get(key);
+      if (!list) {
+        list = (byName.get(name) ?? []).filter((id) => familyOf(node(id).file) === family);
+        inFamilyByName.set(key, list);
+      }
+      return list;
+    };
+    // The same for the candidates that accept a call's argument labels (Swift).
+    const fittingByLabels = new Map<string, readonly string[]>();
+    // ...and for the properties, or the functions, of a name (uses that are not calls).
+    const usableByName = new Map<string, readonly string[]>();
     const linkOne = (c: FoundCall & { file: string }): void => {
       const from = `${c.file}#${c.from}`;
       const text = linesOf.get(c.file)?.[c.line - 1] ?? "";
       const spec = this.engine.spec(c.file);
       // Only code of the caller's own language family: a Java call never reaches a Swift method of that name.
       const family = familyOf(c.file);
-      let named = (byName.get(c.name) ?? []).filter((id) => id !== from && familyOf(node(id).file) === family);
+      const inFamily = candidates(family, c.name);
+      // The caller itself is no candidate; it can only be among them when it has that name.
+      const self = simple(c.from) === c.name;
+      let named = self ? inFamily.filter((id) => id !== from) : inFamily;
       // `a until b`: only functions declared `infix` are called this way (not Java's `until(..)`).
       // The modifier sits before `fun`, after any annotations: on the symbol's first lines.
       if (c.infix) {
@@ -181,7 +204,13 @@ export class TreeSitterCallGraph implements CallGraphPort {
 
       // Not a call: a property read, or a function passed by name. Linked only when it is clear whose.
       if (c.use) {
-        const all = named.filter((id) => (c.use === "read" ? properties.has(id) : !TYPE_KINDS.has(node(id).kind) && !properties.has(id)));
+        const key = `${family}\n${c.name}\n${c.use}`;
+        let usable = usableByName.get(key);
+        if (!usable) {
+          usable = inFamily.filter((id) => (c.use === "read" ? properties.has(id) : !TYPE_KINDS.has(node(id).kind) && !properties.has(id)));
+          usableByName.set(key, usable);
+        }
+        const all = self ? usable.filter((id) => id !== from) : [...usable];
         let targets = this.narrowUse(all, c, from, meta, scope, visibility);
         if (c.labels) targets = targets.filter((id) => labelsOf(node(id).name).join(":") === c.labels!.join(":"));
         if (targets.length > MAX_TARGETS) targets = [];
@@ -195,9 +224,16 @@ export class TreeSitterCallGraph implements CallGraphPort {
       // Swift: the argument labels are part of a function's name, so load(_:) is no candidate for
       // load(1, cache: true); and a property is called only as a closure, which takes no labels.
       const labelled = c.labels?.some((x) => x !== "_");
-      const fitting = !c.labels
-        ? all
-        : all.filter((id) => (signatures.has(id) ? acceptsLabels(signatures.get(id)!, c.labels!, c.closures) : !(labelled && properties.has(id))));
+      let fitting = all;
+      if (c.labels && !c.infix) {
+        const key = `${family}\n${c.name}\n${c.labels.join(":")}\n${c.closures ?? 0}`;
+        let fits = fittingByLabels.get(key);
+        if (!fits) {
+          fits = inFamily.filter((id) => (signatures.has(id) ? acceptsLabels(signatures.get(id)!, c.labels!, c.closures) : !(labelled && properties.has(id))));
+          fittingByLabels.set(key, fits);
+        }
+        fitting = self ? fits.filter((id) => id !== from) : fits;
+      }
       const narrowed = this.narrow(fitting, c, from, meta, scope, visibility, statics, spec);
       let targets = narrowed?.ids ?? [];
       // A property is not called on a guess by name.
@@ -241,7 +277,7 @@ export class TreeSitterCallGraph implements CallGraphPort {
     for (const c of calls) linkOne(c);
     // The second look, one file at a time: a big repo has many more uses than calls, too many to keep.
     if (names.properties.size || names.functions.size) {
-      for (const f of files) for (const u of this.engine.uses(f.path, f.source, names)) linkOne({ file: f.path, ...u });
+      for (const f of files) for (const u of this.engine.uses(f.path, f.source, names, outlines.get(f.path))) linkOne({ file: f.path, ...u });
     }
     stats.implementsLinks = this.linkImplementations(typeParents, meta, linesOf, scope, visibility, collector);
     return { meta, linesOf, collector, stats };
@@ -370,7 +406,7 @@ export class TreeSitterCallGraph implements CallGraphPort {
    * `unsure`: found by name alone, to be trusted only when exactly one target is left.
    */
   private narrow(
-    candidates: string[],
+    candidates: readonly string[],
     c: FoundCall & { file: string },
     from: string,
     meta: Map<string, GraphNode>,
@@ -465,6 +501,13 @@ export class TreeSitterCallGraph implements CallGraphPort {
       // The type is known and has no such method in the code: something else gives it one (a
       // derive, Lombok's @Getter, a library trait). Another type's method of that name is not it.
       if (spec?.methodsAreWritten) return null;
+      // A library type the repo only adds to (`extension Signal { ... }`), and this is not one of
+      // the methods it adds: the library's own `signal.observe(..)` or `signal.filter { }`. As for
+      // any library type, only a method the repo adds to a library protocol can still be meant.
+      if (spec?.moduleScope && scope.isExtendedOnly(typeName)) {
+        const added = all.filter((id) => scope.isExtendedOnly(scope.ownerSimpleOf(id)));
+        return added.length ? { ids: added, unsure: true } : null;
+      }
     }
     // Nobody wrote the type down. A name nearly every type has (Rust's `clone`, `into`, `iter`)
     // says nothing about whose it is.
@@ -484,7 +527,7 @@ export class TreeSitterCallGraph implements CallGraphPort {
     if (visible.length) return { ids: visible };
 
     // Nothing reachable: only a name that exists once in the whole repo is trusted.
-    return { ids: all.length === 1 ? all : [] };
+    return { ids: all.length === 1 ? [...all] : [] };
   }
 }
 
@@ -572,8 +615,11 @@ class TypeScope {
 
   /** The same, last part only: "Inner" for "Outer.Inner.run". */
   ownerSimpleOf(id: string): string {
-    return simple(this.ownerOf(id));
+    let known = this.ownerSimples.get(id);
+    if (known === undefined) this.ownerSimples.set(id, (known = simple(this.ownerOf(id))));
+    return known;
   }
+  private readonly ownerSimples = new Map<string, string>();
 
   /** The symbols called `name` (without labels) in the type with this qualified name. */
   membersOf(type: string, name: string): string[] {
@@ -600,7 +646,7 @@ class TypeScope {
   }
 
   /** The candidates declared on the nearest ancestor of `type` that has one (visible from `file` when possible). */
-  inAncestors(all: string[], type: string, file: string): string[] {
+  inAncestors(all: readonly string[], type: string, file: string): string[] {
     for (const a of this.ancestorsOf(type)) {
       const found = all.filter((id) => this.ownerSimpleOf(id) === a);
       if (!found.length) continue;
@@ -624,13 +670,13 @@ class TypeScope {
    * name. When that type exists but has none of them, the others belong to
    * same-named types nested elsewhere (`Reward` vs `BackingFragment.Reward`): none.
    */
-  ofExactType(ids: string[], type: string): string[] {
+  ofExactType(ids: readonly string[], type: string): string[] {
     const exact = ids.filter((id) => {
       const name = this.meta.get(id)!.name;
       return owner(name) === type || name === type;
     });
     if (exact.length) return exact;
-    return (this.typesByName.get(type) ?? []).some((t) => t.name === type) ? [] : ids;
+    return (this.typesByName.get(type) ?? []).some((t) => t.name === type) ? [] : [...ids];
   }
 
   /** Ruby's `@repo` -> "self.repo"; Go's `s` in `func (s *Svc)` -> "self" (`s.repo` -> "self.repo"). */

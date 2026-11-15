@@ -617,3 +617,37 @@ describe("each language keeps to its own rules (roadmap 32)", () => {
     expect(family("swift")).toBeUndefined();
   });
 });
+
+describe("Swift: a library type the repo only adds to (roadmap 34)", () => {
+  // The repo adds `ignoreValues` to the library's Signal; `observe` and `filter` stay the library's own.
+  const files = {
+    "App/Signal+Extras.swift": "extension Signal {\n  func ignoreValues() -> Signal { self }\n}\n",
+    "App/TestObserver.swift": "class CombineTestObserver {\n  func observe(_ publisher: Int) {}\n}\n",
+    "App/Discovery.swift": "class DiscoveryController {\n  func filter(with params: Int) {}\n}\n",
+    "App/Router.swift": [
+      "class Router {",
+      "  let done: Signal<Int, Never>",
+      "  init(deepLink: Signal<Int, Never>) {",
+      "    self.done = deepLink.filter { $0 == 1 }.ignoreValues()",
+      "  }",
+      "  func watch(observer: Int) {",
+      "    self.done.observe(observer)",
+      "    self.done.ignoreValues()",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  };
+
+  it("does not tie the library's own methods to another type's", () => {
+    expect(callersOf(files, "App/TestObserver.swift#CombineTestObserver.observe(_:)")).toEqual([]);
+    expect(callersOf(files, "App/Discovery.swift#DiscoveryController.filter(with:)")).toEqual([]);
+  });
+
+  it("still links the methods the repo adds to it", () => {
+    expect(callersOf(files, "App/Signal+Extras.swift#Signal.ignoreValues")).toEqual([
+      "App/Router.swift#Router.init(deepLink:)",
+      "App/Router.swift#Router.watch(observer:)",
+    ]);
+  });
+});
