@@ -95,4 +95,12 @@ export const objc: LanguageSpec = {
     function_definition: { kind: "function", name: declaratorName },
   },
   calls: { message_expression: message, selector_expression: selector, call_expression: field("function") },
+  // The grammar reads these as names or types: `self`, `YES`, `instancetype`, `@end`, `void`.
+  keywords: new Set([
+    "self", "super", "nil", "Nil", "NULL", "YES", "NO", "id", "instancetype",
+    "void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "bool",
+    "@implementation", "@interface", "@protocol", "@end", "@property", "@synthesize", "@dynamic", "@class",
+    "@selector", "@encode", "@optional", "@required", "@public", "@private", "@protected", "@package",
+    "@try", "@catch", "@finally", "@throw", "@synchronized", "@autoreleasepool",
+  ]),
 };

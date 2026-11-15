@@ -131,6 +131,23 @@ describe("tree-sitter highlighter", () => {
     expect(out.map((l) => l.map((t) => t.text).join(""))).toEqual(["def go(x):  # note", "    return run('é', 42)"]);
   });
 
+  it("marks only the directive itself as the preprocessor, not the code an #if holds (Xcode's colours, roadmap 36)", () => {
+    const hl = new TreeSitterHighlighter(engine);
+    const preprocessor = (path: string, lines: string[]) =>
+      hl.highlight(path, lines)!.map((line) => line.filter((t) => t.detail === "preprocessor").map((t) => t.text).join(" "));
+    expect(preprocessor("store.h", ["#ifndef STORE_H", "#define STORE_H", "int store_count(int n);", "#endif"])).toEqual([
+      "#ifndef STORE_H", "#define STORE_H", "", "#endif",
+    ]);
+    expect(preprocessor("Inbox.m", ["@implementation Inbox", "#if DEBUG", "- (void)dump { int n = 1; }", "#endif", "@end"])).toEqual([
+      "", "#if DEBUG", "", "#endif", "",
+    ]);
+  });
+
+  it("keeps the colours of code inside a regular expression (Ruby's interpolation)", () => {
+    const out = new TreeSitterHighlighter(engine).highlight("a.rb", ["x =~ /#{prefix(item)}\\d+/"])!;
+    expect(out[0].filter((t) => t.kind !== "plain").map((t) => `${t.kind}:${t.text}`)).toEqual(["function:prefix"]);
+  });
+
   it("keeps multi-line comments split per line", () => {
     const out = new TreeSitterHighlighter(engine).highlight("A.java", ["/* a", "b */ int x = 1;"])!;
     expect(out[0]).toEqual([{ text: "/* a", kind: "comment" }]);

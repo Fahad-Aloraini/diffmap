@@ -331,7 +331,12 @@ collapses or opens a file without marking it. In a report file the marks stay in
 your browser; on the service they are saved per person.
 
 The button in the top bar switches the colours between **Auto** (follows your
-system), **Light** and **Dark**; your choice is remembered in the browser. Drag the edge of
+system), **Light** and **Dark**; your choice is remembered in the browser. The **Xcode**
+button next to it colours the code like Xcode's own Default theme, light or dark with the
+page, in Xcode's font (SF Mono 12, where your computer has it): keywords, strings,
+comments, attributes, `#if` and `#import`, and, as in Xcode, a name being declared apart
+from one being used, and the repo's own types and functions apart from a library's. It is
+remembered too. Drag the edge of
 the left list or of the bottom panel to resize it.
 
 ---

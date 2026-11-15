@@ -14,6 +14,8 @@ export interface CallGraphInput {
 export interface CallGraphResult {
   nodes: GraphNode[]; // changed symbols plus neighbours (removed symbols excluded)
   edges: GraphEdge[];
+  /** Every name the repo defines a symbol under in these files, as code writes it (`load`, `Store`). */
+  names?: string[];
 }
 
 /**

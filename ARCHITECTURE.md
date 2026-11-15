@@ -174,7 +174,7 @@ flowchart LR
   S["html-style.ts<br/>colours (light/dark), layout"] --> P
   C["html-client.ts<br/>selection, back/forward,<br/>usages panel, folding, viewed"] --> P
   M["html-client-mr.ts<br/>comments, replies, approve<br/>(service only)"] --> P
-  T["theme.ts<br/>Auto / Light / Dark button"] --> P
+  T["theme.ts, xcode-style.ts<br/>Auto / Light / Dark button,<br/>Xcode's colours button"] --> P
 ```
 
 - **Cards (left column):** one per changed file, with old and new line numbers.
@@ -201,6 +201,13 @@ flowchart LR
 - **Changed letters:** [intraline.ts](src/application/intraline.ts) pairs each
   removed line with the added line that replaced it and finds the characters
   that differ; render-html.ts wraps them in `<span class="chg">`.
+- **Xcode's colours:** [xcode-style.ts](src/interfaces/html/xcode-style.ts) holds the
+  values of Xcode's Default (Light) and Default (Dark) themes, on when `<html>` has
+  `data-style="xcode"`. Besides its kind (keyword, type...), a token can carry a detail
+  (`HighlightDetail` in the highlighter port: a declaration, a type called like a function,
+  documentation, `#if`...), and the analysis lists the names the repo defines
+  (`names` in the result), so that a project's own type or function is told from a
+  library's. diffmap's own colours look only at the kind.
 - **Right-to-left text:** `bidiHtml` in render-html.ts wraps each Arabic or Hebrew
   run of a code line in `<bdi>`; in files without a highlighter, a line whose
   first letter is right-to-left gets `dir="rtl"`.
@@ -280,7 +287,7 @@ one in GitLab, so it becomes a general comment that quotes `file:line` and the c
 | What was read from each file (symbols, calls) | `diffmap-outlines.json` in the project's git folder (`CACHE_DIR/<project>.git/`, or `.git/` for the CLI) | rewritten by each analysis with the files it met; ignored after diffmap's reading rules or a grammar change; removed with the project |
 | "Viewed" ticks on the service | `DATA_DIR/viewed.json`, per GitLab user and MR, each with the version of the file's change that was viewed (`changeVersion` in render-html.ts); a tick counts only while the version matches | kept |
 | "Viewed" ticks in a CLI report | the browser (localStorage) | per browser |
-| Theme choice | the browser (localStorage `diffmap:theme`) | per browser |
+| Theme choice, and Xcode's colours on or off | the browser (localStorage `diffmap:theme`, `diffmap:style`) | per browser |
 
 ---
 
@@ -312,7 +319,7 @@ The browser scripts are checked by hand in a headless browser; see the commit me
 | Make name matching smarter | [tree-sitter-call-graph.ts](src/infrastructure/parsers/tree-sitter/tree-sitter-call-graph.ts) (`narrow`), [visibility.ts](src/infrastructure/parsers/tree-sitter/visibility.ts) |
 | Change how Swift is read | [languages/swift.ts](src/infrastructure/parsers/tree-sitter/languages/swift.ts); a newer grammar goes in [grammars/](grammars/README.md) |
 | Recognise a new kind of TypeScript symbol | [parsers/typescript/symbols.ts](src/infrastructure/parsers/typescript/symbols.ts) |
-| Change what the page looks like | [html-style.ts](src/interfaces/html/html-style.ts) (colours, layout), [render-html.ts](src/interfaces/html/render-html.ts) (markup) |
+| Change what the page looks like | [html-style.ts](src/interfaces/html/html-style.ts) (colours, layout), [xcode-style.ts](src/interfaces/html/xcode-style.ts) (Xcode's colours), [render-html.ts](src/interfaces/html/render-html.ts) (markup) |
 | Change how the page behaves | [html-client.ts](src/interfaces/html/html-client.ts), and [html-client-mr.ts](src/interfaces/html/html-client-mr.ts) for comments |
 | Add a CLI option | [cli/index.ts](src/interfaces/cli/index.ts) |
 | Add a service setting | [server/config.ts](src/interfaces/server/config.ts), [src/server.ts](src/server.ts), `.env.example`, README |

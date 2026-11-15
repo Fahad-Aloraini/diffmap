@@ -8,6 +8,13 @@
 
 ## Done
 
+### 36. Xcode's colours — DONE
+- An **Xcode** button next to Auto / Light / Dark colours the code like Xcode's built-in Default (Light) or Default (Dark), whichever the page shows. Remembered in the browser (`diffmap:style`) and applied before the page paints, like the theme; on the review pages of the CLI and of the service.
+- Every value is from the theme files themselves (`xcode-style.ts` says where): background, text, selection, the current line (the selected definition), keywords, strings, characters, numbers, regular expressions, comments, documentation and its keywords, `// MARK:`, `#if` / `#import` (the directive itself, not the code an `#if` holds), attributes, web addresses, type and other declarations, the project's and the libraries' types and functions. SF Mono 12 with the themes' weights (light Regular, keywords Semibold; dark Medium, keywords Bold), line spacing 1.1, documentation in Helvetica; SF Mono is never downloaded, so other computers show Menlo or their monospace font. Only the code changes: the rest of the page keeps its own fonts and colours.
+- To tell them apart a token can now carry a detail besides its kind: the name being declared, a type called like a function (Swift `Store()`), documentation, `MARK`, characters, regular expressions, the preprocessor. diffmap's own colours look at the kind only and are unchanged (compared pixel by pixel in ten languages, Ruby's code inside a regular expression too), but for Objective-C's own words, now keywords (`self`, `YES`, `@implementation`, `void`), and Swift's `#selector`, whose `#` takes its word's colour.
+- The analysis lists the names the repo defines a symbol under that the page shows (`names` in the result), for the project / library colours. They go by name: a library method the repo also defines (`viewDidLoad`) counts as the project's.
+- Not done: variables, properties and constants by who declares them (diffmap does not know stored properties, so they stay plain text), macros, the TypeScript highlighter's declarations; the gutter, which the themes leave to the system; the insertion point (the code has none).
+
 ### 35. Objective-C, linked with Swift; the definition is the line with the name — DONE
 - Objective-C (`.m`, `.mm`) is a language of its own (`languages/objc.ts`): classes, categories, methods, protocols, C functions; message sends, C calls and `@selector(..)`.
 - It shares a family with Swift, and its methods are named the way Swift sees them (`saveItem(_:completion:)`, `init(name:)`), so calls link both ways: Swift to an Objective-C method (also with a trailing closure for a block), class method or class; Objective-C to Swift through `[[T alloc] initWith..]`, `[x method:..]` and `[T classMethod:..]`.

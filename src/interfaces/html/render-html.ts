@@ -8,7 +8,7 @@ import type { DiffLine } from "../../domain/symbol.js";
 import { intralineMarks, type CharRange } from "../../application/intraline.js";
 import { STYLE } from "./html-style.js";
 import { CLIENT_SCRIPT } from "./html-client.js";
-import { THEME_BOOT, THEME_BUTTON } from "./theme.js";
+import { STYLE_BUTTON, THEME_BOOT, THEME_BUTTON } from "./theme.js";
 import { MR_CLIENT_SCRIPT } from "./html-client-mr.js";
 import type {
   Approvals,
@@ -197,7 +197,43 @@ const piecesHtml = (text: string, at: number, marks: CharRange[] | undefined, ht
   return out + html(expandTabs(text.slice(pos)));
 };
 
-const tokensHtml = (text: string, tokens?: HighlightToken[], marks?: CharRange[]): string => {
+/** Whether a word is a name the repo defines (see AnalysisResult.names). */
+type Own = (word: string) => boolean;
+const NOTHING_OWN: Own = () => false;
+
+/** Inside comments and strings: web addresses, and in documentation the keywords of its markup (`- Parameter`, `@param`). */
+const WEB_ADDRESS = /\bhttps?:\/\/[^\s"'<>()]+[^\s"'<>().,;:!?]/g;
+const DOC_KEYWORD = /(?<=^\s*(?:\/\/\/|\/?\*+)?\s*)(?:- (?:Parameters?|Returns|Throws|Note|Warning|Important|Precondition|Postcondition|Complexity|SeeAlso|Since|Author|Version)\b|@(?:param|return|returns|throws|see|note|warning)\b)/g;
+
+/** A token's text, with the addresses and documentation keywords in it marked (`at`: where it starts in the line). */
+const insideHtml = (t: HighlightToken, at: number, marks: CharRange[] | undefined): string => {
+  const parts: { from: number; to: number; cls: string }[] = [];
+  if (t.kind === "comment" || t.kind === "string") for (const m of t.text.matchAll(WEB_ADDRESS)) parts.push({ from: m.index, to: m.index + m[0].length, cls: "tk-url" });
+  if (t.detail === "doc") for (const m of t.text.matchAll(DOC_KEYWORD)) parts.push({ from: m.index, to: m.index + m[0].length, cls: "tk-doc-keyword" });
+  if (!parts.length) return piecesHtml(t.text, at, marks, bidiHtml);
+  parts.sort((a, b) => a.from - b.from);
+  let out = "";
+  let pos = 0;
+  for (const part of parts) {
+    if (part.from < pos) continue;
+    out += piecesHtml(t.text.slice(pos, part.from), at + pos, marks, bidiHtml);
+    out += `<span class="${part.cls}">${piecesHtml(t.text.slice(part.from, part.to), at + part.from, marks, bidiHtml)}</span>`;
+    pos = part.to;
+  }
+  return out + piecesHtml(t.text.slice(pos), at + pos, marks, bidiHtml);
+};
+
+/**
+ * The classes of a token: its kind (`tk-function`) for every colour scheme, its detail
+ * (`tk-definition`) and "own" for a name the repo defines, which only the Xcode colours use.
+ */
+const tokenClass = (t: HighlightToken, own: Own): string => {
+  const cls = [t.kind === "plain" ? "" : `tk-${t.kind}`, t.detail ? `tk-${t.detail}` : ""];
+  if ((t.kind === "type" || t.kind === "function") && t.detail !== "definition" && t.detail !== "type-definition" && own(t.text)) cls.push("own");
+  return cls.filter(Boolean).join(" ");
+};
+
+const tokensHtml = (text: string, tokens?: HighlightToken[], marks?: CharRange[], own: Own = NOTHING_OWN): string => {
   // Marks count characters of the line; they only fit the tokens when those spell the same line.
   if (!tokens || (marks?.length && tokens.reduce((n, t) => n + t.text.length, 0) !== text.length)) {
     return piecesHtml(text, 0, marks, bidiHtml);
@@ -205,9 +241,10 @@ const tokensHtml = (text: string, tokens?: HighlightToken[], marks?: CharRange[]
   let at = 0;
   return tokens
     .map((t) => {
-      const html = piecesHtml(t.text, at, marks, bidiHtml);
+      const html = insideHtml(t, at, marks);
       at += t.text.length;
-      return t.kind === "plain" ? html : `<span class="tk-${t.kind}">${html}</span>`;
+      const cls = tokenClass(t, own);
+      return cls ? `<span class="${cls}">${html}</span>` : html;
     })
     .join("");
 };
@@ -217,10 +254,10 @@ const tokensHtml = (text: string, tokens?: HighlightToken[], marks?: CharRange[]
  * translations, …) a line that starts with Arabic or Hebrew is laid out right to left
  * as a whole. Code always stays left to right, with its right-to-left runs isolated.
  */
-const textCell = (text: string, tokens?: HighlightToken[], prose = false, marks?: CharRange[]): string =>
+const textCell = (text: string, tokens?: HighlightToken[], prose = false, marks?: CharRange[], own?: Own): string =>
   prose && startsRtl(text)
     ? `<span class="tx" dir="rtl">${piecesHtml(text, 0, marks, esc)}</span>`
-    : `<span class="tx">${tokensHtml(text, tokens, marks)}</span>`;
+    : `<span class="tx">${tokensHtml(text, tokens, marks, own)}</span>`;
 
 /**
  * Colour a file view. Added lines come from the new file and removed lines from
@@ -311,6 +348,9 @@ export function renderHtml(
   const views = treeOrder(folderTree(sorted.map((v) => v.path))).map((i) => sorted[i]);
   const viewIdx = new Map(views.map((v, i) => [v.path, i]));
   const nodeById = new Map(result.nodes.map((n) => [n.id, n]));
+  // Names the repo defines, which the Xcode colours tell from a library's.
+  const ownNames = new Set(result.names ?? []);
+  const own: Own = (word) => ownNames.has(word);
 
   // Changed symbols, in file then line order. Their index (k) is used everywhere.
   const changed = result.nodes
@@ -442,7 +482,7 @@ export function renderHtml(
           : "";
         const sign = l.type === "add" ? "+" : l.type === "del" ? "−" : "";
         rows.push(
-          `<div class="${cls}"${id}${def}><span class="lo">${l.oldLine ?? ""}</span><span class="ln">${l.newLine ?? ""}</span><span class="sg">${sign}</span>${textCell(l.text, tokens?.[i], !hl, marks.get(i))}</div>`
+          `<div class="${cls}"${id}${def}><span class="lo">${l.oldLine ?? ""}</span><span class="ln">${l.newLine ?? ""}</span><span class="sg">${sign}</span>${textCell(l.text, tokens?.[i], !hl, marks.get(i), own)}</div>`
         );
       });
 
@@ -475,7 +515,7 @@ export function renderHtml(
       const rows = code
         .map((text, i) => {
           const n = c.line + i;
-          return `<div class="dl ctx" id="U${ci}-${n}"><span class="lo">${n}</span><span class="ln">${n}</span><span class="sg"></span>${textCell(text, tokens?.[i], !hl)}</div>`;
+          return `<div class="dl ctx" id="U${ci}-${n}"><span class="lo">${n}</span><span class="ln">${n}</span><span class="sg"></span>${textCell(text, tokens?.[i], !hl, undefined, own)}</div>`;
         })
         .join("");
       return `<div class="caller code" data-path="${esc(c.file)}">${rows || `<div class="deco" id="U${ci}-${c.line}">${esc(c.name)}</div>`}</div>`;
@@ -558,6 +598,7 @@ export function renderHtml(
   <div class="acts">
     ${warnPill}
     ${mrPage ? mrActions(mrPage) : ""}
+    ${STYLE_BUTTON}
     ${THEME_BUTTON}
   </div>
 </header>

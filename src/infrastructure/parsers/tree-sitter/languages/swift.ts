@@ -316,6 +316,7 @@ export const swift: LanguageSpec = {
   enumCases: true,
   moduleScope: true,
   knownParents: UIKIT_PARENTS,
+  typesAreCalled: true,
   defs: {
     // class, struct, enum, actor; an extension only names what is inside it (Order.total)
     class_declaration: {

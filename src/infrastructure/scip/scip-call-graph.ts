@@ -170,6 +170,8 @@ export class ScipCallGraph implements CallGraphPort {
         }
       }
     }
-    return { nodes: [...nodes.values()], edges };
+    // The names the repo defines, from the index and from the builders that ran.
+    const names = new Set([...(exact.names ?? []), ...[...built.values()].flatMap((r) => r.names ?? [])]);
+    return { nodes: [...nodes.values()], edges, names: [...names] };
   }
 }

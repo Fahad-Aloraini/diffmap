@@ -146,4 +146,8 @@ export interface LanguageSpec {
   methodsAreWritten?: boolean;
   /** Method names the standard library gives nearly every type: never linked on a receiver of unknown type. */
   everyTypeHas?: ReadonlySet<string>;
+  /** Words the grammar reads as names or types but the language keeps for itself (Objective-C `self`, `YES`, `@end`): coloured as keywords. */
+  keywords?: ReadonlySet<string>;
+  /** A value is made by calling its type (Swift `Store()`), and only types start with a capital: such a call is coloured as a type. */
+  typesAreCalled?: boolean;
 }
