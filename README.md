@@ -415,9 +415,17 @@ so the two meet on one name: `- saveItem:(Item *)item completion:(Block)done` is
 `store.saveItem(item) { ... }` links to the Objective-C method; `[cache storeItem:item forKey:key]`,
 `[[Cache alloc] initWithSize:10]` and `[Logger logMessage:text]` link to Swift's
 `storeItem(_:forKey:)`, `init(size:)` and a `static func logMessage(_:)`. `@selector(didTap:)`
-counts as a use. Not followed: the further renaming Swift does when it imports Objective-C
-(`saveItem:` as `save(_:)`, `NS_SWIFT_NAME`), `@objc(otherName:)`, and headers (`.h`), which are
-still read as C.
+counts as a use. Objective-C calls Swift by the name Objective-C sees:
+`@objc(presentThread:) func presentView(_:)` is `[list presentThread:thread]` and
+`@selector(presentThread:)`, no longer `presentView:`; an `@objc` method (or `@IBAction`, or one in
+an `@objcMembers` class or an `@objc extension`) by the selector Swift makes for it:
+`present(view:)` is `presentWithView:`, `move(to:)` `moveTo:`, `init(name:)` `initWithName:`, and a
+`throws` method gets an `error:` piece, before any closures at its end; a property by its getter
+and `setName:`; and
+`@objc(MYStore) class Store` is `MYStore`. Not followed: the further renaming Swift does when it
+imports Objective-C (`saveItem:` as `save(_:)`, `NS_SWIFT_NAME`), the selector of an `override`
+or of a method that is `@objc` only because it fulfils an `@objc` protocol, and headers (`.h`),
+which are still read as C.
 
 ### Angular
 

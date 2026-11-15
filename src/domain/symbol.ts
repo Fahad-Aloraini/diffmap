@@ -46,6 +46,7 @@ export interface ChangedSymbol {
   baseRange: LineRange | null; // line range in base rev (null if added)
   headRange: LineRange | null; // line range in head rev (null if removed)
   diff: DiffLine[];            // the diff lines that belong to this symbol
+  objcNames?: string[];        // Swift: the names Objective-C calls it by (see SymbolInfo)
 }
 
 /** A named symbol found in one version of a file. */
@@ -53,4 +54,6 @@ export interface SymbolInfo {
   name: string; // qualified, e.g. "MyClass.doThing"
   kind: SymbolKind;
   range: LineRange;
+  /** Swift: the names Objective-C calls it by, as an Objective-C call reads them (`presentThread(_:)`). */
+  objcNames?: string[];
 }

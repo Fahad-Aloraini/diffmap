@@ -12,6 +12,8 @@ export interface GraphNode {
   endLine?: number;        // last line of the symbol, when known
   nameAt?: NamePosition;   // where its name is written (head, or base if removed), when known
   labels: string[];        // e.g. decorators such as "@Patch(':id')"
+  /** Swift: the other words Objective-C writes for it (`presentThread`, `setTitle`, `MYStore`). */
+  objcNames?: string[];
   /** Whole source of an unchanged symbol (head), so callers outside the diff can be shown in full. */
   code?: string[];
 }

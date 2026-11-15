@@ -48,7 +48,8 @@ export const CLIENT_SCRIPT = `
   // The name as the code writes it: no owner, and no Swift argument labels ("load(_:cache:)" is "load").
   function shortName(n) { var p = n.replace(/[(](?:[^ ():]+:)+[)]$/, '').split(/[.#:]+/); return p[p.length - 1]; }
   function markName(row, k, def) {
-    var name = shortName(syms[k].name), tx = row.querySelector('.tx');
+    // A usage can write another name for it: Objective-C calls Swift's presentView as presentThread.
+    var names = [shortName(syms[k].name)].concat(def ? [] : syms[k].written || []), name = names[0], tx = row.querySelector('.tx');
     if (!name || !tx) return;
     // The name can run over several pieces of the line (syntax colours, changed letters),
     // so look for it in the whole line and then find the pieces it covers.
@@ -62,12 +63,14 @@ export const CLIENT_SCRIPT = `
     }
     function word(at) { return !/[A-Za-z0-9_$]/.test(at ? text.charAt(at - 1) : '') && !/[A-Za-z0-9_$]/.test(text.charAt(at + name.length)); }
     // On a definition, where the parser says the name is: not in an attribute before it, like @objc(save:).
-    var col = def ? syms[k].col : undefined, at = -1, from = 0;
+    var col = def ? syms[k].col : undefined, at = -1;
     if (col !== undefined && text.substr(col, name.length) === name && word(col)) at = col;
-    else while ((at = text.indexOf(name, from)) >= 0) {
-      var taken = part(at, false).n.parentNode.closest('.sym'); // already another symbol's name
-      if (word(at) && !taken) break;
-      from = at + 1;
+    // Its own name first, then the others, as a whole word that is not already another symbol's.
+    for (var i = 0; at < 0 && i < names.length; i++) {
+      name = names[i];
+      for (var from = 0; (at = text.indexOf(name, from)) >= 0; from = at + 1) {
+        if (word(at) && !part(at, false).n.parentNode.closest('.sym')) break;
+      }
     }
     if (at < 0) return;
     var p0 = part(at, false), p1 = part(at + name.length, true);

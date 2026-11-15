@@ -300,11 +300,12 @@ function listSymbols(
             }
           }
           const last = rule.extendTo?.(node) ?? node;
+          const objc = rule.objcNames?.(node);
           // Where the name is written: after any attributes and annotations the definition starts with.
           const at = nameNode(node, name);
           const written = at ? { name: { line: at.startPosition.row + 1, column: at.startPosition.column } } : {};
           out.push({
-            info: { name: qualified, kind, range: { start: node.startPosition.row + 1, end: endLine(last), ...written } },
+            info: { name: qualified, kind, range: { start: node.startPosition.row + 1, end: endLine(last), ...written }, ...(objc?.length ? { objcNames: objc } : {}) },
             start: node.startIndex,
             end: last.endIndex,
           });

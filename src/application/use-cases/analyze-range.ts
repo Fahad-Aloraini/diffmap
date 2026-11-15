@@ -92,7 +92,7 @@ export class AnalyzeRangeUseCase {
       const changedIds = named.filter((s) => s.status !== "removed").map((s) => s.id);
       const removed = named
         .filter((s) => s.status === "removed")
-        .map((s) => ({ id: s.id, name: s.name }));
+        .map((s) => ({ id: s.id, name: s.name, ...(s.objcNames ? { objcNames: s.objcNames } : {}) }));
       const allFiles = this.sourceReader.listFiles(headRev);
 
       for (const builder of this.graphBuilders) {
@@ -123,6 +123,7 @@ export class AnalyzeRangeUseCase {
         endLine: s.headRange?.end ?? s.baseRange?.end,
         ...((s.headRange ?? s.baseRange)?.name ? { nameAt: (s.headRange ?? s.baseRange)!.name } : {}),
         labels: existing?.labels ?? [],
+        ...(existing?.objcNames ? { objcNames: existing.objcNames } : {}),
       });
     }
 

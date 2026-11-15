@@ -339,6 +339,8 @@ interface SymInfo {
   line: number;
   /** Where its name starts on the definition's row, in the text as shown (tabs as two spaces), when the parser said. */
   col?: number;
+  /** Other words a usage may write for it: Objective-C's names for Swift code (`presentThread`). */
+  written?: string[];
   end: number; // last line of the definition (in the old file for a removed symbol)
   before: string[];
   after: string[];
@@ -401,6 +403,7 @@ export function renderHtml(
       file: n.file,
       line: shownLine(n),
       ...(nameColumn(n) !== undefined ? { col: nameColumn(n) } : {}),
+      ...(n.objcNames?.length ? { written: n.objcNames } : {}),
       end: Math.max(n.line, endOf.get(n.id) ?? n.endLine ?? n.line),
       before: diff.filter((l) => l.type === "del").map((l) => l.text),
       after: diff.filter((l) => l.type === "add").map((l) => l.text),

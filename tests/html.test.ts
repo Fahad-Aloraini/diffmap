@@ -617,3 +617,36 @@ describe("Xcode colours (roadmap 36)", () => {
     }
   });
 });
+
+describe("a usage written with the name Objective-C sees (roadmap 38)", () => {
+  // Objective-C calls `@objc(presentThread:) func presentView` as presentThread: that is the word to underline there.
+  const result: AnalysisResult = {
+    base: sha("a"),
+    head: sha("b"),
+    symbols: [],
+    files: [
+      {
+        path: "App/List.swift",
+        status: "modified",
+        lines: [row("ctx", 1, "class List {"), row("ctx", 2, "  @objc(presentThread:)"), row("ctx", 3, "  func presentView(_ thread: Thread) {"), row("add", 4, "    print(thread)"), row("ctx", 5, "  }"), row("ctx", 6, "  func close() {}"), row("ctx", 7, "}")],
+      },
+      { path: "App/Inbox.m", status: "modified", lines: [row("ctx", 1, "- (void)open:(List *)list {"), row("add", 2, "    [list presentThread:nil];"), row("ctx", 3, "}")] },
+    ],
+    nodes: [
+      node("App/List.swift#List.presentView(_:)", { changed: true, status: "modified", kind: "method", line: 2, endLine: 5, objcNames: ["presentThread"] }),
+      node("App/List.swift#List.close", { changed: true, status: "modified", kind: "method", line: 6, endLine: 6 }),
+      node("App/Inbox.m#Inbox.open(_:)", { kind: "method", line: 1, endLine: 3 }),
+    ],
+    edges: [{ from: "App/Inbox.m#Inbox.open(_:)", to: "App/List.swift#List.presentView(_:)", kind: "calls", sites: [{ line: 2, text: "    [list presentThread:nil];" }] }],
+  };
+  const page = renderHtml(result);
+
+  it("tells the page those words, and the page tries them after the symbol's own name", () => {
+    const syms = pageData(page).syms as { name: string; written?: string[] }[];
+    expect(syms.map((s) => [s.name, s.written])).toEqual([
+      ["List.presentView(_:)", ["presentThread"]],
+      ["List.close", undefined],
+    ]);
+    expect(page).toContain("syms[k].written");
+  });
+});
