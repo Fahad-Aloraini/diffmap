@@ -45,7 +45,8 @@ export const CLIENT_SCRIPT = `
 
   // ── underline the symbol's name on its definition and on each usage, like a link in an editor ──
   var symSpans = {};
-  function shortName(n) { var p = n.split(/[.#:]+/); return p[p.length - 1]; }
+  // The name as the code writes it: no owner, and no Swift argument labels ("load(_:cache:)" is "load").
+  function shortName(n) { var p = n.replace(/[(](?:[^ ():]+:)+[)]$/, '').split(/[.#:]+/); return p[p.length - 1]; }
   function markName(row, k, def) {
     var name = shortName(syms[k].name), tx = row.querySelector('.tx');
     if (!name || !tx) return;

@@ -609,12 +609,13 @@ describe("each language keeps to its own rules (roadmap 32)", () => {
 
   it("every language says which family it is in and how it writes types", async () => {
     const { LANGUAGES } = await import("../src/infrastructure/parsers/tree-sitter/languages.js");
-    expect(LANGUAGES.map((l) => l.id)).toEqual(["javascript", "python", "java", "go", "c_sharp", "php", "ruby", "rust", "kotlin", "swift", "scala", "c", "cpp"]);
+    expect(LANGUAGES.map((l) => l.id)).toEqual(["javascript", "python", "java", "go", "c_sharp", "php", "ruby", "rust", "kotlin", "swift", "objc", "scala", "c", "cpp"]);
     for (const l of LANGUAGES) expect(l.variableTypes?.length, l.id).toBeGreaterThan(0);
     const family = (id: string) => LANGUAGES.find((l) => l.id === id)!.family;
     expect([family("java"), family("kotlin"), family("scala")]).toEqual(["jvm", "jvm", "jvm"]);
     expect([family("c"), family("cpp")]).toEqual(["c", "c"]);
-    expect(family("swift")).toBeUndefined();
+    expect([family("swift"), family("objc")]).toEqual(["apple", "apple"]);
+    expect(family("go")).toBeUndefined();
   });
 });
 
@@ -649,5 +650,79 @@ describe("Swift: a library type the repo only adds to (roadmap 34)", () => {
       "App/Router.swift#Router.init(deepLink:)",
       "App/Router.swift#Router.watch(observer:)",
     ]);
+  });
+});
+
+describe("Objective-C, and Objective-C with Swift (roadmap 35)", () => {
+  const STORE = [
+    '#import "Store.h"', //                                                        1
+    '#import "App-Swift.h"', //                                                    2
+    "@implementation Store", //                                                    3
+    "- (instancetype)initWithName:(NSString *)name {", //                          4
+    "    self = [super init];", //                                                 5
+    "    return self;", //                                                         6
+    "}", //                                                                        7
+    "- (void)saveItem:(Item *)item completion:(void (^)(BOOL))completion {", //    8
+    "    Cache *cache = [[Cache alloc] initWithSize:10];", //                      9
+    '    [cache storeItem:item forKey:@"k"];', //                                  10
+    "    [self flush];", //                                                        11
+    '    [Logger logMessage:@"saved"];', //                                        12
+    "    helper(1);", //                                                           13
+    "    [self.button addTarget:self action:@selector(didTap:) forControlEvents:1];", // 14
+    "}", //                                                                        15
+    "- (void)flush {}", //                                                         16
+    "- (void)didTap:(id)sender {}", //                                             17
+    "+ (Store *)sharedStore { return [Store new]; }", //                           18
+    "@end", //                                                                     19
+    "static void helper(int x) {}", //                                             20
+    "",
+  ].join("\n");
+  const SWIFT = [
+    "class Cache: NSObject {",
+    "  @objc init(size: Int) {}",
+    "  @objc",
+    "  func storeItem(_ item: Item, forKey key: String) {}",
+    "}",
+    "class Logger: NSObject {",
+    "  @objc static func logMessage(_ text: String) {}",
+    "}",
+    "class Screen {",
+    '  let store = Store(name: "main")',
+    "  func run(item: Item) {",
+    "    store.saveItem(item) { ok in }",
+    "    store.flush()",
+    "    let shared = Store.sharedStore()",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const files = { "App/Store.m": STORE, "App/Cache.swift": SWIFT };
+
+  it("names methods the way Swift sees them", async () => {
+    const engine = await TreeSitterEngine.load();
+    expect(engine.symbols("App/Store.m", STORE).map((s) => `${s.kind} ${s.name} ${s.range.start}`)).toEqual([
+      "class Store 3", "method Store.init(name:) 4", "method Store.saveItem(_:completion:) 8", "method Store.flush 16",
+      "method Store.didTap(_:) 17", "method Store.sharedStore 18", "function helper 20",
+    ]);
+  });
+
+  it("links calls inside Objective-C: messages, C functions, @selector", () => {
+    expect(callersOf(files, "App/Store.m#Store.flush")).toEqual(["App/Cache.swift#Screen.run(item:)", "App/Store.m#Store.saveItem(_:completion:)"]);
+    expect(callersOf(files, "App/Store.m#helper")).toEqual(["App/Store.m#Store.saveItem(_:completion:)"]);
+    expect(callersOf(files, "App/Store.m#Store.didTap(_:)")).toEqual(["App/Store.m#Store.saveItem(_:completion:)"]);
+  });
+
+  it("links Objective-C to Swift: alloc/init, methods, class methods", () => {
+    const m = "App/Store.m#Store.saveItem(_:completion:)";
+    expect(callersOf(files, "App/Cache.swift#Cache.init(size:)")).toEqual([m]);
+    expect(callersOf(files, "App/Cache.swift#Cache.storeItem(_:forKey:)")).toEqual([m]);
+    expect(callersOf(files, "App/Cache.swift#Logger.logMessage(_:)")).toEqual([m]);
+  });
+
+  it("links Swift to Objective-C: methods with a trailing closure, class methods, the class", () => {
+    const run = "App/Cache.swift#Screen.run(item:)";
+    expect(callersOf(files, "App/Store.m#Store.saveItem(_:completion:)")).toEqual([run]);
+    expect(callersOf(files, "App/Store.m#Store.sharedStore")).toEqual([run]);
+    expect(callersOf(files, "App/Store.m#Store")).toEqual(["App/Cache.swift#Screen"]);
   });
 });

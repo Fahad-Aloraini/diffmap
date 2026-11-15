@@ -23,6 +23,7 @@ There are two ways to use it:
 | Java | classes, records, interfaces, enums, methods, constructors, method references | matched by name | ✅ scip-java |
 | Kotlin | classes, interfaces, enums, objects, functions, constructors, properties with a getter | matched by name | ✅ scip-java |
 | Swift | classes, structs, enums, actors, protocols and what they require, extensions, functions, `init`, subscripts, properties with code (computed, set up by a closure, with `didSet`) | matched by name and [argument labels](#swift-and-ios) | — |
+| Objective-C (`.m`, `.mm`) | classes, categories, methods, protocols, C functions | matched by name and argument labels, [together with Swift](#swift-and-ios) | — |
 | C# | classes, records, structs, interfaces, enums, methods, constructors, properties with code | matched by name | — |
 | Scala | classes, objects, traits, functions | matched by name | — |
 | Go | functions, methods, structs, interfaces | matched by name | — |
@@ -401,7 +402,17 @@ Swift has no indexer to give exact calls, so name matching does more for it:
 Left out on purpose, because a name alone is not enough: a method called on something
 whose type is not written down, when several types have one (`items.map { }`);
 `.success(x)` and other members of a type only the compiler knows, unless the type is
-written nearby. Objective-C files (`.m`) show as plain diff cards.
+written nearby.
+
+**Objective-C and Swift together.** Objective-C methods are named the way Swift sees them,
+so the two meet on one name: `- saveItem:(Item *)item completion:(Block)done` is
+`saveItem(_:completion:)`, `- initWithName:` is `init(name:)`. A Swift call
+`store.saveItem(item) { ... }` links to the Objective-C method; `[cache storeItem:item forKey:key]`,
+`[[Cache alloc] initWithSize:10]` and `[Logger logMessage:text]` link to Swift's
+`storeItem(_:forKey:)`, `init(size:)` and a `static func logMessage(_:)`. `@selector(didTap:)`
+counts as a use. Not followed: the further renaming Swift does when it imports Objective-C
+(`saveItem:` as `save(_:)`, `NS_SWIFT_NAME`), `@objc(otherName:)`, and headers (`.h`), which are
+still read as C.
 
 ### Angular
 

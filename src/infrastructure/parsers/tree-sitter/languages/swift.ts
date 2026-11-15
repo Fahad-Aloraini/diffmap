@@ -307,6 +307,8 @@ export const swift: LanguageSpec = {
   id: "swift",
   wasm: "tree-sitter-swift.wasm", // newer than tree-sitter-wasms has; see grammars/README.md
   extensions: [".swift"],
+  // Swift and Objective-C call each other (bridging headers, @objc).
+  family: "apple",
   variableTypes: ["cast", "environment", "colonType", "constructed", "genericCall"],
   prepare: swiftPrepare,
   implicitSelf: true,
