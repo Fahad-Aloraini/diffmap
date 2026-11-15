@@ -133,7 +133,7 @@ export class TreeSitterCallGraph implements CallGraphPort {
       for (const s of symbols) {
         const id = `${f.path}#${s.name}`;
         if (meta.has(id)) continue; // overloads: keep the first
-        meta.set(id, { id, file: f.path, name: s.name, kind: s.kind, changed: false, line: s.range.start, endLine: s.range.end, labels: [] });
+        meta.set(id, { id, file: f.path, name: s.name, kind: s.kind, changed: false, line: s.range.start, endLine: s.range.end, ...(s.range.name ? { nameAt: s.range.name } : {}), labels: [] });
         const key = simple(s.name);
         byName.set(key, [...(byName.get(key) ?? []), id]);
       }
@@ -319,7 +319,9 @@ export class TreeSitterCallGraph implements CallGraphPort {
             const key = `${m.id}>${p.id}`;
             if (seen.has(key)) continue;
             seen.add(key);
-            collector.add(m.id, p.id, "implements", m.line, linesOf.get(m.file)?.[m.line - 1] ?? "");
+            // On the line with its name, not on an attribute before it (`@objc`, `override`).
+            const line = m.nameAt?.line ?? m.line;
+            collector.add(m.id, p.id, "implements", line, linesOf.get(m.file)?.[line - 1] ?? "");
             added++;
           }
         }

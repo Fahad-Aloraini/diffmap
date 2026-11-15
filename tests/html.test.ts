@@ -418,6 +418,44 @@ describe("where a symbol is shown to be defined", () => {
     expect(defRow(0).split("storeItem")[0]).not.toContain("@objc");
     expect(defRow(1)).toContain("initWithName");
   });
+
+  it("is the line the parser says has the name, also when an attribute before it holds the name (roadmap 37)", () => {
+    const lines: DiffLine[] = [
+      row("ctx", 1, "class Cache {"),
+      row("ctx", 2, "  @objc(storeItem:)"),
+      row("ctx", 3, "  @MainActor"),
+      row("ctx", 4, "  func storeItem(_ item: Item) {"),
+      row("add", 5, "    print(item)"),
+      row("ctx", 6, "  }"),
+      row("ctx", 7, "\t@objc(load:) func load(_ x: Int) {}"),
+      row("del", 8, "  @objc(drop:)"),
+      row("del", 9, "  func drop(_ x: Int) {}"),
+      { type: "ctx", oldLine: 10, newLine: 8, text: "}" },
+    ];
+    const page = renderHtml({
+      base: sha("a"),
+      head: sha("b"),
+      symbols: [],
+      files: [{ path: "Cache.swift", status: "modified", lines }],
+      nodes: [
+        node("Cache.swift#Cache.storeItem(_:)", { changed: true, status: "modified", kind: "method", line: 2, endLine: 6, nameAt: { line: 4, column: 7 } }),
+        node("Cache.swift#Cache.load(_:)", { changed: true, status: "modified", kind: "method", line: 7, endLine: 7, nameAt: { line: 7, column: 19 } }),
+        node("Cache.swift#Cache.drop(_:)", { changed: true, status: "removed", kind: "method", line: 8, endLine: 9, nameAt: { line: 9, column: 7 } }),
+      ],
+      edges: [],
+    });
+    const syms = pageData(page).syms as { name: string; line: number; col?: number }[];
+    // The column is in the text as shown, where a tab is two spaces.
+    expect(syms.map((s) => [s.name, s.line, s.col])).toEqual([
+      ["Cache.storeItem(_:)", 4, 7],
+      ["Cache.load(_:)", 7, 20],
+      ["Cache.drop(_:)", 9, 7],
+    ]);
+    const defRowOf = (k: number) => page.match(new RegExp(`<div class="([^"]*)"[^>]*data-defs="${k}"[^>]*>[\\s\\S]{0,400}?</div>`))!;
+    expect(defRowOf(0)[0]).toContain("func storeItem");
+    expect(defRowOf(2)[1]).toContain("del");
+    expect(defRowOf(2)[0]).toContain("func drop");
+  });
 });
 
 

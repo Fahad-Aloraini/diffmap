@@ -747,6 +747,42 @@ describe("Swift variable types", () => {
   });
 });
 
+describe("Swift: the line with the name, not an attribute before it (roadmap 37)", () => {
+  let repo: FixtureRepo | null = null;
+  afterEach(() => {
+    repo?.cleanup();
+    repo = null;
+  });
+
+  it("is where a changed method is, and where an implementation is listed", async () => {
+    const before = lines(
+      "protocol Presenter {", //                                1
+      "  func presentView(_ thread: Int)", //                   2
+      "}", //                                                   3
+      "class Screen: Presenter {", //                           4
+      "  @objc(presentView:)", //                               5
+      "  @MainActor", //                                        6
+      "  func presentView(_ thread: Int) {", //                 7
+      "    print(thread)", //                                   8
+      "  }", //                                                 9
+      "}", //                                                   10
+    );
+    repo = createFixtureRepo();
+    repo.write("App/Screen.swift", before);
+    repo.commit("initial");
+    repo.write("App/Screen.swift", before.replace("  func presentView(_ thread: Int)\n}", "  func presentView(_ thread: Int)\n  func close()\n}").replace("print(thread)", "print(thread + 1)"));
+    repo.commit("change");
+
+    const langs = await loadLanguageSupport();
+    const r = new AnalyzeRangeUseCase(new GitDiffReader(repo.dir), new GitSourceReader(repo.dir), langs.parsers, langs.graphs).execute("HEAD~1", "HEAD");
+    const screen = r.nodes.find((n) => n.id === "App/Screen.swift#Screen.presentView(_:)")!;
+    expect([screen.line, screen.nameAt]).toEqual([6, { line: 8, column: 7 }]);
+    expect(r.symbols.find((s) => s.name === "Screen.presentView(_:)")?.headRange?.name).toEqual({ line: 8, column: 7 });
+    // The protocol changed too: its implementation is listed on the line with its name.
+    expect(r.edges.find((e) => e.kind === "implements")?.sites).toEqual([{ line: 8, text: "  func presentView(_ thread: Int) {" }]);
+  });
+});
+
 describe("names the repo defines, for Xcode's colours (roadmap 36)", () => {
   let repo: FixtureRepo | null = null;
   afterEach(() => {

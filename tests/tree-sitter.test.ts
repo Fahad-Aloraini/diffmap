@@ -96,6 +96,30 @@ describe("tree-sitter symbols", () => {
   });
 });
 
+describe("where a definition writes its name (roadmap 37)", () => {
+  /** "name line:column" for each symbol: the line and column its name is written at. */
+  const at = (path: string, src: string) =>
+    engine.symbols(path, src).map((s) => `${s.name} ${s.range.start}>${s.range.name?.line}:${s.range.name?.column}`);
+
+  it("is after attributes, annotations and decorators, also when they hold the name", () => {
+    expect(at("a.swift", "class A {\n  @objc(save:)\n  @MainActor\n  func save(_ x: Int) {}\n  @objc(load:) func load(_ x: Int) {}\n}\n")).toEqual([
+      "A 1>1:6", "A.save(_:) 2>4:7", "A.load(_:) 5>5:20",
+    ]);
+    expect(at("A.kt", '@JvmName("load")\nfun load() {}\n')).toEqual(["load 1>2:4"]);
+    expect(at("A.java", "class A {\n  @Override\n  public void save() {}\n}\n")).toEqual(["A 1>1:6", "A.save 2>3:14"]);
+  });
+
+  it("is found in C declarators, Objective-C selectors and Swift's init, subscript and properties", () => {
+    expect(at("a.c", "static int helper(int x) { return x; }\n")).toEqual(["helper 1>1:11"]);
+    expect(at("a.m", "@implementation A\n- (instancetype)initWithName:(NSString *)name { return self; }\n- (IBAction)tap:(id)sender {}\n@end\n")).toEqual([
+      "A 1>1:16", "A.init(name:) 2>2:16", "A.tap(_:) 3>3:12",
+    ]);
+    expect(at("a.swift", "class A {\n  @objc init(size: Int) {}\n  subscript(i: Int) -> Int { i }\n  @objc dynamic var isOn: Bool { true }\n}\n")).toEqual([
+      "A 1>1:6", "A.init(size:) 2>2:8", "A.subscript(_:) 3>3:2", "A.isOn 4>4:20",
+    ]);
+  });
+});
+
 describe("tree-sitter call graph", () => {
   const files = [
     { path: "auth.py", source: "def login(email):\n    return check(email)\n\ndef check(e):\n    return e\n" },

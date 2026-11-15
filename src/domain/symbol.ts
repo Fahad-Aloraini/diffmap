@@ -16,6 +16,17 @@ export type ChangeStatus = "added" | "removed" | "modified";
 export interface LineRange {
   start: number; // 1-based, inclusive
   end: number;   // 1-based, inclusive
+  /**
+   * Where the symbol's name is written, when the parser says: after `start` when attributes,
+   * annotations or decorators come first (`@objc(save:)` on a line of its own).
+   */
+  name?: NamePosition;
+}
+
+/** A place in a file: line 1-based, column 0-based, in characters. */
+export interface NamePosition {
+  line: number;
+  column: number;
 }
 
 /** One line of a unified diff, with its line number on each side. */

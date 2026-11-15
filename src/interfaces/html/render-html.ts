@@ -286,14 +286,22 @@ function highlightView(view: FileView, hl: SyntaxHighlighterPort): HighlightToke
 /** A symbol's name as its code writes it: no owner, no Swift argument labels. `Svc.load(_:cache:)` -> `load`. */
 const writtenName = (name: string): string => (name.split(".").pop() ?? name).replace(/\((?:[^\s():]+:)+\)$/, "");
 
+/** A row's line number on the side a symbol is on: the old file for a removed symbol, else the new one. */
+const sideLine = (l: DiffLine, n: GraphNode): number | null =>
+  n.status === "removed" ? (l.type === "del" ? l.oldLine : null) : l.type !== "del" ? l.newLine : null;
+
 /**
  * The row of a file view where a symbol is defined (a removed symbol, on a removed line):
  * the line that writes its name, not the first line of the definition, which may be an
  * attribute or annotation on a line of its own (`@objc`, `@Override`, a decorator).
+ * The parser says where the name is (`nameAt`); without it, the name is looked for in the text.
  */
 function rowFor(lines: DiffLine[], n: GraphNode): number {
-  const removed = n.status === "removed";
-  const lineOf = (l: DiffLine) => (removed ? (l.type === "del" ? l.oldLine : null) : l.type !== "del" ? l.newLine : null);
+  const lineOf = (l: DiffLine) => sideLine(l, n);
+  if (n.nameAt) {
+    const at = lines.findIndex((l) => lineOf(l) === n.nameAt!.line);
+    if (at >= 0) return at;
+  }
   const start = lines.findIndex((l) => lineOf(l) === n.line);
   if (start < 0) return 0;
   const name = writtenName(n.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -329,6 +337,8 @@ interface SymInfo {
   status: string;
   file: string;
   line: number;
+  /** Where its name starts on the definition's row, in the text as shown (tabs as two spaces), when the parser said. */
+  col?: number;
   end: number; // last line of the definition (in the old file for a removed symbol)
   before: string[];
   after: string[];
@@ -364,13 +374,21 @@ export function renderHtml(
   const outCallers: GraphNode[] = [];
   const ciOf = new Map<string, number>();
 
-  // The line a symbol is shown at: where its name is written (see rowFor).
-  const shownLine = (n: GraphNode): number => {
+  // The row a symbol is shown at: where its name is written (see rowFor).
+  const defRowOf = (n: GraphNode): DiffLine | undefined => {
     const view = views[viewIdx.get(n.file) ?? -1];
-    const row = view ? view.lines[rowFor(view.lines, n)] : undefined;
-    const line = n.status === "removed" ? row?.oldLine : row?.newLine;
+    return view ? view.lines[rowFor(view.lines, n)] : undefined;
+  };
+  const shownLine = (n: GraphNode): number => {
+    const line = n.status === "removed" ? defRowOf(n)?.oldLine : defRowOf(n)?.newLine;
     // Not in the view (or not found): the line the symbol starts on.
     return line !== null && line !== undefined && line >= n.line ? line : n.line;
+  };
+  // Where on that row the name starts, so that the page underlines it there and not, say, in `@objc(save:)` before it.
+  const nameColumn = (n: GraphNode): number | undefined => {
+    const row = defRowOf(n);
+    if (!n.nameAt || !row || sideLine(row, n) !== n.nameAt.line) return undefined;
+    return expandTabs(row.text.slice(0, n.nameAt.column)).length;
   };
 
   const syms: SymInfo[] = changed.map((n) => {
@@ -382,6 +400,7 @@ export function renderHtml(
       status: n.status ?? "modified",
       file: n.file,
       line: shownLine(n),
+      ...(nameColumn(n) !== undefined ? { col: nameColumn(n) } : {}),
       end: Math.max(n.line, endOf.get(n.id) ?? n.endLine ?? n.line),
       before: diff.filter((l) => l.type === "del").map((l) => l.text),
       after: diff.filter((l) => l.type === "add").map((l) => l.text),
@@ -403,9 +422,11 @@ export function renderHtml(
     const k = kOf.get(e.to);
     const caller = nodeById.get(e.from);
     if (k === undefined || !caller) continue;
+    // Without sites: the caller's line with its name.
+    const named = caller.nameAt?.line ?? caller.line;
     const sites: CallSite[] = e.sites?.length
       ? e.sites
-      : [{ line: caller.line, text: caller.code?.[0] ?? "" }];
+      : [{ line: named, text: caller.code?.[named - caller.line] ?? caller.code?.[0] ?? "" }];
     const inDiff = viewIdx.has(caller.file);
     if (!inDiff) {
       if (!ciOf.has(caller.id)) {

@@ -60,11 +60,13 @@ export const CLIENT_SCRIPT = `
       }
       return parts[0];
     }
-    var at = -1, from = 0;
-    while ((at = text.indexOf(name, from)) >= 0) {
-      var b = at ? text.charAt(at - 1) : '', a = text.charAt(at + name.length);
+    function word(at) { return !/[A-Za-z0-9_$]/.test(at ? text.charAt(at - 1) : '') && !/[A-Za-z0-9_$]/.test(text.charAt(at + name.length)); }
+    // On a definition, where the parser says the name is: not in an attribute before it, like @objc(save:).
+    var col = def ? syms[k].col : undefined, at = -1, from = 0;
+    if (col !== undefined && text.substr(col, name.length) === name && word(col)) at = col;
+    else while ((at = text.indexOf(name, from)) >= 0) {
       var taken = part(at, false).n.parentNode.closest('.sym'); // already another symbol's name
-      if (!/[A-Za-z0-9_$]/.test(b) && !/[A-Za-z0-9_$]/.test(a) && !taken) break;
+      if (word(at) && !taken) break;
       from = at + 1;
     }
     if (at < 0) return;

@@ -184,7 +184,9 @@ flowchart LR
 - **The `DIFFMAP` object** in the page holds, per changed symbol, its before/after
   lines and every place it is used, with the id of the row to highlight.
 - **[html-client.ts](src/interfaces/html/html-client.ts)** underlines the name of
-  each changed symbol and highlights the selected symbol's lines. Selecting takes
+  each changed symbol and highlights the selected symbol's lines. A definition is
+  shown where the parser says its name is written (`nameAt`, line and column), not
+  on an attribute or decorator before it. Selecting takes
   the code column to the definition; the panel under the code lists the usages
   and shows the code around the one picked (callers outside the change in full),
   without moving the code column. It also keeps the back/forward history, fills

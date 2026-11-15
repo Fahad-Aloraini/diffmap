@@ -121,6 +121,7 @@ export class AnalyzeRangeUseCase {
         status: s.status,
         line: s.headRange?.start ?? s.baseRange?.start ?? 0,
         endLine: s.headRange?.end ?? s.baseRange?.end,
+        ...((s.headRange ?? s.baseRange)?.name ? { nameAt: (s.headRange ?? s.baseRange)!.name } : {}),
         labels: existing?.labels ?? [],
       });
     }
