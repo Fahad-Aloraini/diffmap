@@ -449,7 +449,7 @@ The code is split into layers; inner layers never import outer ones.
 
 - **TypeScript** uses the TypeScript compiler (ts-morph), so calls are exact.
 - **Other languages** use [tree-sitter](https://tree-sitter.github.io/). Each one is a
-  few lines in `src/infrastructure/parsers/tree-sitter/languages.ts` saying which
+  few lines in its own file in `src/infrastructure/parsers/tree-sitter/languages/` saying which
   syntax nodes are definitions and which are calls. Calls are matched by name and
   narrowed to what the caller can reach (`tree-sitter-call-graph.ts`, `visibility.ts`).
 - **A SCIP index**, when present, replaces name matching for the files it covers
@@ -457,7 +457,7 @@ The code is split into layers; inner layers never import outer ones.
 - **Angular** is an extra graph that reads decorators and templates
   (`src/infrastructure/parsers/angular/`); it runs next to the others.
 
-To add a language tree-sitter has a grammar for, add an entry to `languages.ts`
+To add a language tree-sitter has a grammar for, add a file to `languages/` and list it in `languages.ts`
 and to the grammar list in the `Dockerfile`, plus a test in `tests/tree-sitter.test.ts`.
 Grammars come from `tree-sitter-wasms`; Swift's is newer than that package has and
 lives in [`grammars/`](grammars/README.md).

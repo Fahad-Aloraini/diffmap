@@ -696,7 +696,7 @@ describe("Swift variable types", () => {
     expect(typeOfVariable("cell", 'let cell = table.dequeueReusableCell(withIdentifier: "c", for: i) as! ItemCell')).toBe("ItemCell");
     expect(typeOfVariable("vc", "guard let vc = segue.destination as? DetailController else { return }")).toBe("DetailController");
     expect(typeOfVariable("theme", "@Environment(Theme.self) private var theme")).toBe("Theme");
-    expect(typeOfVariable("values", "private let values = TestObserver<Int, Never>()", true)).toBe("TestObserver");
+    expect(typeOfVariable("values", "private let values = TestObserver<Int, Never>()", ["cast", "environment", "colonType", "constructed", "genericCall"])).toBe("TestObserver");
     expect(typeOfVariable("table", "var table = GetTable<Row>(1)")).toBe(null); // C#: a method call, not a type
   });
 

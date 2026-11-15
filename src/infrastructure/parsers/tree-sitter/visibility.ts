@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import type { VariableForm } from "./languages/spec.js";
 
 /** Lines that bring other files or modules into scope, in the languages tree-sitter reads. */
 const IMPORT_LINE = /^\s*(import|from|require|require_relative|use|using|#\s*include|include|include_once|require_once|mod|extern\s+crate|load)\b|\brequire\s*\(|\bimport\s*\(|^\s*(?:@[\w.]+\s+)+(?:\w+\s+)?import\b|^\s*(?:public|internal|private|fileprivate|package)\s+import\b/;
@@ -158,24 +159,37 @@ export class Visibility {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The forms a variable's type is written in (see typeOfVariable), built once per variable name. */
+/** How one language writes a variable's type: the pattern for a variable named `v` (already escaped). The type is the first group. */
+const FORMS: Record<VariableForm, (v: string) => RegExp> = {
+  // cell = table.dequeue(...) as! ItemCell
+  cast: (v) => new RegExp(`\\b${v}\\s*=[^=\\n][^\\n]*?\\bas[?!]\\s+([A-Z][\\w]*)\\s*(?:$|[;,){]|else\\b)`, "m"),
+  // @Environment(Theme.self) private var theme
+  environment: (v) => new RegExp(`@Environment\\(\\s*([A-Z][\\w]*)\\.self\\s*\\)[^\\n=]*\\bvar\\s+${v}\\b`),
+  // Svc svc = / (Svc svc)
+  typeFirst: (v) => new RegExp(`\\b([A-Z][\\w]*)(?:<[^>]*>)?[*&\\s]+\\$?${v}\\b\\s*[=;,)]`),
+  // svc: Svc
+  colonType: (v) => new RegExp(`\\$?\\b${v}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?\\*?([A-Z][\\w]*)`),
+  // svc = Svc( / new Svc( / := Svc{
+  constructed: (v) => new RegExp(`\\$?\\b${v}\\s*:?=\\s*(?:new\\s+|&)?([A-Z][\\w]*)\\s*[({]`),
+  // svc *Svc / (svc pkg.Svc)
+  goParam: (v) => new RegExp(`(?:^|[(,])[ \\t]*${v}[ \\t]+\\*?(?:[a-z]\\w*\\.)?([A-Z][\\w]*)`, "m"),
+  // @svc = Svc.new
+  rubyNew: (v) => new RegExp(`@?\\b${v}\\s*=\\s*([A-Z][\\w]*)\\.new\\b`),
+  // box = Box<Int>() makes a Box. (In C#, `x = Load<T>()` is a method call, so this is not for everyone.)
+  genericCall: (v) => new RegExp(`\\b${v}\\s*=\\s*([A-Z][\\w]*)<[^>\\n]*>\\s*\\(`),
+};
+/** Tried in this order, whatever order a language lists them in. */
+const FORM_ORDER = Object.keys(FORMS) as VariableForm[];
+/** Every form but Swift's generic call: for code whose language is not known. */
+export const ANY_LANGUAGE: readonly VariableForm[] = FORM_ORDER.filter((f) => f !== "genericCall");
+
 const patternsByName = new Map<string, RegExp[]>();
-function variablePatterns(name: string, typeCalls: boolean): RegExp[] {
-  const key = `${typeCalls ? 1 : 0}${name}`;
+function variablePatterns(name: string, forms: readonly VariableForm[]): RegExp[] {
+  const key = `${forms.join()}|${name}`;
   const known = patternsByName.get(key);
   if (known) return known;
   const v = escape(name) + "`?"; // Swift: let `default` = ...
-  const patterns = [
-    new RegExp(`\\b${v}\\s*=[^=\\n][^\\n]*?\\bas[?!]\\s+([A-Z][\\w]*)\\s*(?:$|[;,){]|else\\b)`, "m"), // Swift, Kotlin: cell = table.dequeue(...) as! ItemCell
-    new RegExp(`@Environment\\(\\s*([A-Z][\\w]*)\\.self\\s*\\)[^\\n=]*\\bvar\\s+${v}\\b`), // SwiftUI: @Environment(Theme.self) private var theme
-    new RegExp(`\\b([A-Z][\\w]*)(?:<[^>]*>)?[*&\\s]+\\$?${v}\\b\\s*[=;,)]`), // Svc svc = / (Svc svc)
-    new RegExp(`\\$?\\b${v}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?\\*?([A-Z][\\w]*)`), // svc: Svc
-    new RegExp(`\\$?\\b${v}\\s*:?=\\s*(?:new\\s+|&)?([A-Z][\\w]*)\\s*[({]`), // svc = Svc( / new Svc( / := Svc{
-    new RegExp(`(?:^|[(,])[ \\t]*${v}[ \\t]+\\*?(?:[a-z]\\w*\\.)?([A-Z][\\w]*)`, "m"), // Go: svc *Svc / (svc pkg.Svc)
-    new RegExp(`@?\\b${v}\\s*=\\s*([A-Z][\\w]*)\\.new\\b`), // Ruby: @svc = Svc.new
-  ];
-  // Swift: box = Box<Int>() makes a Box. (In C#, `x = Load<T>()` is a method call, so this is not for everyone.)
-  if (typeCalls) patterns.push(new RegExp(`\\b${v}\\s*=\\s*([A-Z][\\w]*)<[^>\\n]*>\\s*\\(`));
+  const patterns = FORM_ORDER.filter((f) => forms.includes(f)).map((f) => FORMS[f](v));
   // A repo has a bounded number of variable names, but keep the memory bounded anyway.
   if (patternsByName.size > 50_000) patternsByName.clear();
   patternsByName.set(key, patterns);
@@ -183,18 +197,18 @@ function variablePatterns(name: string, typeCalls: boolean): RegExp[] {
 }
 
 /**
- * The declared type of a variable inside a piece of code, from the usual forms:
- * `Svc svc` (Java, C#, C++), `svc: Svc` (TS, Kotlin, Swift, Python, Rust, Scala),
- * `svc = Svc(...)` / `svc = new Svc(...)` / `svc := Svc{` / `$svc = new Svc(`,
- * `svc Svc` / `svc *pkg.Svc` (Go fields and parameters), `@svc = Svc.new` (Ruby),
- * `cell = ... as! ItemCell` (Swift, Kotlin casts), `@Environment(Theme.self) var theme` (SwiftUI).
- * With `typeCalls` (a capitalised call makes a type, Swift), also `box = Box<Int>()`.
+ * The declared type of a variable inside a piece of code. `forms` are the ways the code's
+ * language writes one (LanguageSpec.variableTypes), so that one language's syntax is never
+ * read into another's: `Svc svc` (Java, C#, C++), `svc: Svc` (Kotlin, Swift, Python, Rust,
+ * Scala), `svc = Svc(...)` / `new Svc(...)` / `:= Svc{`, `svc *pkg.Svc` (Go), `@svc = Svc.new`
+ * (Ruby), `cell = ... as! ItemCell` (Swift, Kotlin), `@Environment(Theme.self) var theme` and
+ * `box = Box<Int>()` (Swift).
  */
-export function typeOfVariable(variable: string, code: string, typeCalls = false): string | null {
+export function typeOfVariable(variable: string, code: string, forms: readonly VariableForm[] = ANY_LANGUAGE): string | null {
   const name = variable.replace(/^[$@]/, "");
-  // Every form below writes the variable's name: code without it needs no search.
+  // Every form writes the variable's name: code without it needs no search.
   if (!code.includes(name)) return null;
-  const patterns = variablePatterns(name, typeCalls);
+  const patterns = variablePatterns(name, forms);
   for (const p of patterns) {
     const m = code.match(p);
     if (m) return m[1];
