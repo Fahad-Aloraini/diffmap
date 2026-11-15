@@ -598,6 +598,9 @@ describe("each language keeps to its own rules (roadmap 32)", () => {
     // `T x` is Java, C#, C, C++ and PHP; in Kotlin `Svc svc` declares nothing.
     expect(typeOfVariable("svc", "Svc svc = make();", ["typeFirst", "constructed"])).toBe("Svc");
     expect(typeOfVariable("svc", "Svc svc = make();", ["cast", "colonType", "constructed"])).toBeNull();
+    // Java's `for (T x : list)`.
+    expect(typeOfVariable("item", "for (OrderItem item : items) {", ["typeFirst", "loopVariable", "constructed"])).toBe("OrderItem");
+    expect(typeOfVariable("item", "for (OrderItem item : items) {", ["typeFirst", "constructed"])).toBeNull();
     // Go's `svc *Svc` and Ruby's `Svc.new` are theirs alone.
     expect(typeOfVariable("svc", "func run(svc *Svc) {", ["constructed", "goParam"])).toBe("Svc");
     expect(typeOfVariable("svc", "@svc = Svc.new", ["rubyNew"])).toBe("Svc");
