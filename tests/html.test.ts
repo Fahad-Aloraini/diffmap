@@ -374,3 +374,45 @@ describe("light / dark toggle", () => {
     expect(page).toContain(':root[data-theme="dark"] {');
   });
 });
+
+describe("where a symbol is shown to be defined", () => {
+  // An attribute on a line of its own comes before the name: the name's line is the definition.
+  const lines: DiffLine[] = [
+    row("ctx", 1, "class Cache {"),
+    row("ctx", 2, "  @objc"),
+    row("ctx", 3, "  func storeItem(_ item: Item, forKey key: String) {"),
+    row("del", 4, "    print(key)"),
+    row("add", 4, "    print(key, item)"),
+    row("ctx", 5, "  }"),
+    row("ctx", 6, "  - (instancetype)initWithName:(NSString *)name {"),
+    row("add", 7, "    return self;"),
+    row("ctx", 8, "  }"),
+    row("ctx", 9, "}"),
+  ];
+  const result: AnalysisResult = {
+    base: sha("a"),
+    head: sha("b"),
+    symbols: [],
+    files: [{ path: "Cache.swift", status: "modified", lines }],
+    nodes: [
+      node("Cache.swift#Cache.storeItem(_:forKey:)", { changed: true, status: "modified", kind: "method", line: 2, endLine: 5 }),
+      // Objective-C's initWithName: is shown as init(name:); "init" starts the word that is written.
+      node("Cache.swift#Cache.init(name:)", { changed: true, status: "modified", kind: "method", line: 6, endLine: 8 }),
+    ],
+    edges: [],
+  };
+  const html = renderHtml(result);
+  const defRow = (k: number) => html.match(new RegExp(`<[^>]*data-defs="${k}"[^>]*>[\\s\\S]{0,600}`))![0];
+
+  it("is the line that writes its name, not an attribute before it", () => {
+    const syms = pageData(html).syms as { name: string; line: number }[];
+    expect(syms.map((s) => [s.name, s.line])).toEqual([
+      ["Cache.storeItem(_:forKey:)", 3],
+      ["Cache.init(name:)", 6],
+    ]);
+    expect(defRow(0)).toContain("storeItem");
+    expect(defRow(0).split("storeItem")[0]).not.toContain("@objc");
+    expect(defRow(1)).toContain("initWithName");
+  });
+});
+

@@ -246,14 +246,32 @@ function highlightView(view: FileView, hl: SyntaxHighlighterPort): HighlightToke
   return out;
 }
 
-/** Where a symbol starts in a file view (removed symbols start on a removed line). */
+/** A symbol's name as its code writes it: no owner, no Swift argument labels. `Svc.load(_:cache:)` -> `load`. */
+const writtenName = (name: string): string => (name.split(".").pop() ?? name).replace(/\((?:[^\s():]+:)+\)$/, "");
+
+/**
+ * The row of a file view where a symbol is defined (a removed symbol, on a removed line):
+ * the line that writes its name, not the first line of the definition, which may be an
+ * attribute or annotation on a line of its own (`@objc`, `@Override`, a decorator).
+ */
 function rowFor(lines: DiffLine[], n: GraphNode): number {
-  const idx = lines.findIndex((l) =>
-    n.status === "removed"
-      ? l.type === "del" && l.oldLine === n.line
-      : l.type !== "del" && l.newLine === n.line
-  );
-  return idx >= 0 ? idx : 0;
+  const removed = n.status === "removed";
+  const lineOf = (l: DiffLine) => (removed ? (l.type === "del" ? l.oldLine : null) : l.type !== "del" ? l.newLine : null);
+  const start = lines.findIndex((l) => lineOf(l) === n.line);
+  if (start < 0) return 0;
+  const name = writtenName(n.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!name) return start;
+  const last = Math.min(n.endLine ?? n.line, n.line + 12);
+  // As a whole word first; then as the start of one (Objective-C's `initWithName:` is `init`).
+  for (const pattern of [new RegExp(`(^|[^\\w$])${name}($|[^\\w$])`), new RegExp(`(^|[^\\w$])${name}`)]) {
+    for (let i = start; i < lines.length; i++) {
+      const line = lineOf(lines[i]);
+      if (line === null) continue;
+      if (line > last) break;
+      if (pattern.test(lines[i].text)) return i;
+    }
+  }
+  return start;
 }
 
 /** One place a changed symbol is used, as the browser needs it. */
@@ -306,6 +324,15 @@ export function renderHtml(
   const outCallers: GraphNode[] = [];
   const ciOf = new Map<string, number>();
 
+  // The line a symbol is shown at: where its name is written (see rowFor).
+  const shownLine = (n: GraphNode): number => {
+    const view = views[viewIdx.get(n.file) ?? -1];
+    const row = view ? view.lines[rowFor(view.lines, n)] : undefined;
+    const line = n.status === "removed" ? row?.oldLine : row?.newLine;
+    // Not in the view (or not found): the line the symbol starts on.
+    return line !== null && line !== undefined && line >= n.line ? line : n.line;
+  };
+
   const syms: SymInfo[] = changed.map((n) => {
     const diff = diffOf.get(n.id) ?? [];
     return {
@@ -314,7 +341,7 @@ export function renderHtml(
       kind: KIND_LABEL[n.kind] ?? n.kind,
       status: n.status ?? "modified",
       file: n.file,
-      line: n.line,
+      line: shownLine(n),
       end: Math.max(n.line, endOf.get(n.id) ?? n.endLine ?? n.line),
       before: diff.filter((l) => l.type === "del").map((l) => l.text),
       after: diff.filter((l) => l.type === "add").map((l) => l.text),

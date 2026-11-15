@@ -10,7 +10,7 @@ RUN npm run build && npm prune --omit=dev
 # Swift's is not among them: it comes from grammars/ (see grammars/README.md).
 RUN cd node_modules/tree-sitter-wasms/out && for f in *.wasm; do \
       case "$f" in tree-sitter-javascript.wasm|tree-sitter-python.wasm|tree-sitter-java.wasm|tree-sitter-go.wasm|\
-        tree-sitter-c_sharp.wasm|tree-sitter-php.wasm|tree-sitter-ruby.wasm|tree-sitter-rust.wasm|tree-sitter-kotlin.wasm|\
+        tree-sitter-c_sharp.wasm|tree-sitter-php.wasm|tree-sitter-ruby.wasm|tree-sitter-rust.wasm|tree-sitter-kotlin.wasm|tree-sitter-objc.wasm|\
         tree-sitter-scala.wasm|tree-sitter-c.wasm|tree-sitter-cpp.wasm) ;; *) rm "$f" ;; esac; done
 
 # ---- run ----

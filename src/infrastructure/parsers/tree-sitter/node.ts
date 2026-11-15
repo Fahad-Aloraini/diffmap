@@ -18,5 +18,6 @@ export interface Node {
   readonly namedChildCount: number;
   readonly nextNamedSibling: Node | null;
   childForFieldName(name: string): Node | null;
+  childrenForFieldName(name: string): Node[];
   descendantsOfType(type: string | string[]): Node[];
 }

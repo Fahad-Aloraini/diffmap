@@ -87,10 +87,10 @@ export type UseRule = (n: Node, names: UseNames) => CallShape | null;
 
 /**
  * A way of writing a variable's type: `x = y as! T` (cast), `@Environment(T.self) var x`
- * (environment), `T x` (typeFirst), `for (T x : list)` (loopVariable), `x: T` (colonType), `x = T(..)` / `new T(..)` / `:= T{`
+ * (environment), `T x` (typeFirst), `for (T x : list)` (loopVariable), `(T *)x` (objcParameter), `x: T` (colonType), `x = T(..)` / `new T(..)` / `:= T{`
  * (constructed), `x *T` in a parameter list (goParam), `x = T.new` (rubyNew), `x = T<U>()` (genericCall).
  */
-export type VariableForm = "cast" | "environment" | "typeFirst" | "loopVariable" | "colonType" | "constructed" | "goParam" | "rubyNew" | "genericCall";
+export type VariableForm = "cast" | "environment" | "typeFirst" | "loopVariable" | "objcParameter" | "colonType" | "constructed" | "goParam" | "rubyNew" | "genericCall";
 
 export interface LanguageSpec {
   id: string; // grammar name in tree-sitter-wasms: tree-sitter-<id>.wasm
@@ -105,7 +105,8 @@ export interface LanguageSpec {
   restore?: (text: string) => string;
   extensions: string[];
   /**
-   * Languages that can call each other share a family: "jvm" (Java, Kotlin, Scala), "c" (C, C++).
+   * Languages that can call each other share a family: "jvm" (Java, Kotlin, Scala), "c" (C, C++),
+   * "apple" (Swift, Objective-C).
    * A call is only linked to code of its own family; without one, a language is its own.
    */
   family?: string;

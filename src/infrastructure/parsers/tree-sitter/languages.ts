@@ -16,6 +16,7 @@ import { ruby } from "./languages/ruby.js";
 import { rust } from "./languages/rust.js";
 import { kotlin } from "./languages/kotlin.js";
 import { swift } from "./languages/swift.js";
+import { objc } from "./languages/objc.js";
 import { scala } from "./languages/scala.js";
 import { c } from "./languages/c.js";
 import { cpp } from "./languages/cpp.js";
@@ -25,4 +26,4 @@ export * from "./languages/spec.js";
 export { firstIdent, lastName } from "./languages/shared.js";
 
 /** Later entries win an extension two languages claim (`.h`: C++ after C). */
-export const LANGUAGES: LanguageSpec[] = [javascript, python, java, go, csharp, php, ruby, rust, kotlin, swift, scala, c, cpp];
+export const LANGUAGES: LanguageSpec[] = [javascript, python, java, go, csharp, php, ruby, rust, kotlin, swift, objc, scala, c, cpp];

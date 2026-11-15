@@ -8,6 +8,12 @@
 
 ## Done
 
+### 35. Objective-C, linked with Swift; the definition is the line with the name — DONE
+- Objective-C (`.m`, `.mm`) is a language of its own (`languages/objc.ts`): classes, categories, methods, protocols, C functions; message sends, C calls and `@selector(..)`.
+- It shares a family with Swift, and its methods are named the way Swift sees them (`saveItem(_:completion:)`, `init(name:)`), so calls link both ways: Swift to an Objective-C method (also with a trailing closure for a block), class method or class; Objective-C to Swift through `[[T alloc] initWith..]`, `[x method:..]` and `[T classMethod:..]`.
+- Not followed: Swift's further renaming on import (`saveItem:` as `save(_:)`, `NS_SWIFT_NAME`), `@objc(otherName:)`, and headers, which are still read as C, so a class's parent and its properties' types are only known when the `.m` file writes them.
+- The page: a definition is shown on the line that writes its name. Before, it was the first line of the definition, which for `@objc` (or `@IBAction`, `@Override`, a decorator) on a line of its own was the attribute. Swift names with labels are underlined by their name (`storeItem`), not by what follows the last colon.
+
 ### 34. Swift: quicker, and the library's own methods left alone — DONE
 - Linking repeats less: the symbols of a name (in one language family) and those that accept a call's labels are worked out once, not once per call (`init` has 2,428 in kickstarter/ios-oss); the second look at a Swift file reuses the symbols found in the first. Whole-repo linking of ios-oss (2,084 Swift files): 28.7 s -> 19.8 s, link for link the same on five repos.
 - A library type the repo only adds to (`extension Signal { ... }`) counted as a type of the repo, so `signal.observe(..)` and `signal.filter { }` were tied to the repo's only method of that name on another type (5 of 30 sampled links in ios-oss). When the method is not one the repo adds, it is the library's own. ios-oss: 90 links gone, Alamofire: 26, none new; the ones looked at were all of this kind.
