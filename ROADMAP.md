@@ -8,6 +8,12 @@
 
 ## Done
 
+### 33. Java: the type of a for-each variable; Java and Swift checked by hand — DONE
+- `for (OrderItem item : items)` now gives `item` its type (a form of Java's own, `loopVariable`). macrozheng/mall: calls with one target 10,656 -> 10,711, with several 542 -> 501, with too many 71 -> 55.
+- Neither language has a compiler index here, so random samples were read against the source (before this fix):
+  - Java, mall, hand-written code: of 40 linked calls 36 right, 3 with the right target among several, 1 wrong (a chained `.get(..)` on a library object tied to the repo's `RedisService.get`). Of 20 unlinked calls whose name exists in the repo, 16 rightly left out (library types, Lombok), 4 real ones missed (`getProductId` on 18 classes: too many to guess).
+  - Swift, kickstarter/ios-oss: of 30 linked calls 25 right, 5 wrong (`signal.observe(..)` and `.filter { }` on ReactiveSwift types, tied to the repo's only method of that name). 10 of 10 linked property reads right. Of 20 unlinked calls, all 20 rightly left out.
+
 ### 32. Each language keeps to its own rules — DONE
 - One file per language in `parsers/tree-sitter/languages/` (`kotlin.ts`, `swift.ts`, `java.ts`, ...), with everything that is that language's own: definitions, calls, what its grammar cannot read, how names are matched. Helpers several languages share are in `shared.ts`, which says so at the top.
 - A variable's type is looked for only in the forms its language writes (`variableTypes`): `Svc svc` in Java, C#, C, C++ and PHP; `svc: Svc` in Kotlin, Swift, Python, Rust and Scala; Go's and Ruby's forms in Go and Ruby only. Before, every language's code was tried against every form.

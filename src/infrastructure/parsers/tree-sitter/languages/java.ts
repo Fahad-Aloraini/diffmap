@@ -6,7 +6,7 @@ export const java: LanguageSpec = {
   id: "java",
   extensions: [".java"],
   family: "jvm",
-  variableTypes: ["typeFirst", "constructed"],
+  variableTypes: ["typeFirst", "loopVariable", "constructed"],
   defs: {
     class_declaration: { kind: "class", supers: parentsIn("superclass", "super_interfaces") },
     record_declaration: { kind: "class", supers: parentsIn("super_interfaces") },

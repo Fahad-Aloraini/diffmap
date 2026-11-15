@@ -167,6 +167,8 @@ const FORMS: Record<VariableForm, (v: string) => RegExp> = {
   environment: (v) => new RegExp(`@Environment\\(\\s*([A-Z][\\w]*)\\.self\\s*\\)[^\\n=]*\\bvar\\s+${v}\\b`),
   // Svc svc = / (Svc svc)
   typeFirst: (v) => new RegExp(`\\b([A-Z][\\w]*)(?:<[^>]*>)?[*&\\s]+\\$?${v}\\b\\s*[=;,)]`),
+  // for (Svc svc : list)
+  loopVariable: (v) => new RegExp(`\\b([A-Z][\\w]*)(?:<[^>]*>)?\\s+${v}\\s*:(?!:)`),
   // svc: Svc
   colonType: (v) => new RegExp(`\\$?\\b${v}\\s*:\\s*(?:&\\s*(?:mut\\s+)?)?\\*?([A-Z][\\w]*)`),
   // svc = Svc( / new Svc( / := Svc{
@@ -180,8 +182,8 @@ const FORMS: Record<VariableForm, (v: string) => RegExp> = {
 };
 /** Tried in this order, whatever order a language lists them in. */
 const FORM_ORDER = Object.keys(FORMS) as VariableForm[];
-/** Every form but Swift's generic call: for code whose language is not known. */
-export const ANY_LANGUAGE: readonly VariableForm[] = FORM_ORDER.filter((f) => f !== "genericCall");
+/** Every form but Swift's generic call and Java's loop variable: for code whose language is not known. */
+export const ANY_LANGUAGE: readonly VariableForm[] = FORM_ORDER.filter((f) => f !== "genericCall" && f !== "loopVariable");
 
 const patternsByName = new Map<string, RegExp[]>();
 function variablePatterns(name: string, forms: readonly VariableForm[]): RegExp[] {
